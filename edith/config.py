@@ -122,6 +122,28 @@ FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", 
 # runs fine without it, the tool just reports it isn't configured yet if called.
 HUNTER_API_KEY = os.environ.get("HUNTER_API_KEY", "").strip()
 
+# Situation Monitor dashboard tab (edith/monitor/) — revenue (Dodo Payments), visitor
+# analytics (Vercel Analytics), and shipping log (GitHub commits). All three are
+# optional/independent like every other integration above: each panel just reports
+# "not configured yet" until its own credentials are set, nothing else breaks.
+DODO_PAYMENTS_API_KEY = os.environ.get("DODO_PAYMENTS_API_KEY", "").strip()
+# Dodo's live vs test-mode API have different base URLs — default to live since a
+# personal revenue dashboard has no reason to point at test data day to day.
+DODO_PAYMENTS_BASE_URL = os.environ.get("DODO_PAYMENTS_BASE_URL", "https://live.dodopayments.com").strip()
+
+VERCEL_ANALYTICS_TOKEN = os.environ.get("VERCEL_ANALYTICS_TOKEN", "").strip()
+VERCEL_TEAM_ID = os.environ.get("VERCEL_TEAM_ID", "").strip()  # only needed if the projects live under a team
+# Which project(s) show up comes from track_vercel_project (facts, category="vercel_project"),
+# same "editable conversationally/from the dashboard, no redeploy" reasoning as GITHUB_TOKEN
+# below — a personal dashboard tracking several apps needs more than one project ID.
+
+# GitHub commits, for the shipping log panel — which repos to show comes from
+# track_shipping_repo (facts, category="shipping_repo"), not an env var, so it's
+# editable conversationally/from the dashboard without a redeploy. The token itself
+# stays an env var since it's a credential, not day-to-day config; public repos work
+# with no token at all, only private repos need one.
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -145,6 +167,11 @@ class Settings:
     nightly_reflection_cron: str
     firebase_service_account_json: str
     hunter_api_key: str
+    dodo_payments_api_key: str
+    dodo_payments_base_url: str
+    vercel_analytics_token: str
+    vercel_team_id: str
+    github_token: str
 
 
 def load_settings() -> Settings:
@@ -191,4 +218,9 @@ def load_settings() -> Settings:
         nightly_reflection_cron=NIGHTLY_REFLECTION_CRON,
         firebase_service_account_json=FIREBASE_SERVICE_ACCOUNT_JSON,
         hunter_api_key=HUNTER_API_KEY,
+        dodo_payments_api_key=DODO_PAYMENTS_API_KEY,
+        dodo_payments_base_url=DODO_PAYMENTS_BASE_URL,
+        vercel_analytics_token=VERCEL_ANALYTICS_TOKEN,
+        vercel_team_id=VERCEL_TEAM_ID,
+        github_token=GITHUB_TOKEN,
     )

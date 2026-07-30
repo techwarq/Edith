@@ -7,6 +7,7 @@ const tabButtons = document.querySelectorAll(".tab-btn");
 const screens = {
   overview: document.getElementById("overview-screen"),
   chat: document.getElementById("chat-screen"),
+  monitor: document.getElementById("monitor-screen"),
   observability: document.getElementById("observability-screen"),
   goals: document.getElementById("goals-screen"),
   todos: document.getElementById("todos-screen"),
@@ -18,6 +19,7 @@ function switchTab(name) {
   tabButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
   Object.entries(screens).forEach(([key, el]) => el.classList.toggle("active", key === name));
   if (name === "overview") loadOverview();
+  else if (name === "monitor") loadMonitor();
   else if (name === "observability") loadObservability();
   else if (name === "goals") loadGoals();
   else if (name === "todos") loadTodos();
@@ -997,5 +999,331 @@ function wireMcpCardActions(panel) {
         alert("Failed to delete server: " + err.message);
       }
     });
+  });
+}
+
+// --- Monitor ("Situation Monitor" tab) --------------------------------------
+//
+// Revenue (Dodo Payments), analytics (Vercel), and shipping log (GitHub) each
+// call a live external API on the backend on every load — no local caching —
+// and each independently reports {configured:false} rather than erroring
+// when its own credentials aren't set, so one missing integration never
+// blocks the rest of the tab. Ideas + Bugs is real CRUD (no external source);
+// Social media summarizes what /skill-talk and save_social_skill have saved.
+
+function fmtMoney(value) {
+  const n = Number(value || 0);
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function statTile(value, label, extra) {
+  return `<div class="stat-tile"><div class="stat-value">${value}</div><div class="stat-label">${label}</div>${extra || ""}</div>`;
+}
+
+function statTileEmpty(label, note) {
+  return `<div class="stat-tile"><div class="stat-value" style="font-size:13px;color:var(--muted)">—</div><div class="stat-label">${label}</div><div class="stat-delta is-flat">${escapeHtml(note)}</div></div>`;
+}
+
+async function loadMonitor() {
+  const panel = document.getElementById("monitor-panel");
+  panel.innerHTML = '<div class="empty-state">Loading…</div>';
+  try {
+    const [revenue, analytics, shipping, social, ideasBugs] = await Promise.all([
+      apiGet("/api/monitor/revenue"),
+      apiGet("/api/monitor/analytics"),
+      apiGet("/api/monitor/shipping"),
+      apiGet("/api/monitor/social"),
+      apiGet("/api/monitor/ideas-bugs", { status: "open" }),
+    ]);
+    renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs.items);
+  } catch (err) {
+    panel.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs) {
+  panel.innerHTML = `
+    <h3>Revenue</h3>
+    <div class="stat-row">${renderRevenueStats(revenue)}</div>
+
+    <div class="card-grid" style="margin-top: 18px;">
+      <div>
+        <div class="panel-header"><h3>Analytics</h3></div>
+        <div class="stat-row" id="monitor-analytics">${renderAnalyticsStats(analytics)}</div>
+        ${renderVercelProjectForm(analytics.projects || [])}
+      </div>
+
+      <div>
+        <div class="panel-header"><h3>Shipping log</h3></div>
+        <div id="monitor-shipping">${renderShippingLog(shipping)}</div>
+        ${renderShippingRepoForm(shipping.repos || [])}
+      </div>
+
+      <div>
+        <div class="panel-header"><h3>Ideas + bugs</h3></div>
+        ${renderIdeaBugForm()}
+        <div id="monitor-ideas-bugs">${renderIdeasBugs(ideasBugs)}</div>
+      </div>
+
+      <div>
+        <div class="panel-header"><h3>Live news</h3><button class="refresh-btn" id="monitor-news-refresh">Refresh</button></div>
+        <input id="monitor-news-topic" type="text" placeholder="Topic (optional)"
+          style="width:100%;padding:10px 14px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;margin-bottom:10px;">
+        <div id="monitor-news"><div class="empty-state">Click Refresh to fetch the latest headlines.</div></div>
+      </div>
+
+      <div>
+        <div class="panel-header"><h3>Social media</h3></div>
+        <div id="monitor-social">${renderSocialSummary(social)}</div>
+      </div>
+    </div>
+  `;
+
+  wireMonitorActions(panel);
+}
+
+function renderRevenueStats(revenue) {
+  const tiles = [];
+  if (!revenue.configured) {
+    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(statTileEmpty(label, "Dodo Payments not connected")));
+  } else if (revenue.error) {
+    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(statTileEmpty(label, "Dodo Payments error")));
+  } else {
+    tiles.push(statTile(fmtMoney(revenue.gross_revenue_usd), "Gross revenue"));
+    tiles.push(statTile(fmtMoney(revenue.mrr_usd), "MRR"));
+    tiles.push(statTile(fmtMoney(revenue.net_revenue_usd), "Net revenue"));
+    const lp = revenue.last_payment;
+    const lpExtra = lp
+      ? `<div class="stat-delta is-flat">${lp.customer_name ? escapeHtml(lp.customer_name) + " · " : ""}${timeAgo(lp.created_at)}</div>`
+      : "";
+    tiles.push(statTile(lp ? fmtMoney(lp.amount_usd) : "—", "Last payment", lpExtra));
+  }
+  return tiles.join("");
+}
+
+// analytics.projects is one entry per tracked Vercel project (see
+// track_vercel_project) — a personal dashboard tracking several apps needs a
+// tile per app, not one blended number, so unlike revenue (a single Dodo
+// account) this renders a variable-length stat row.
+function renderAnalyticsStats(analytics) {
+  if (!analytics.configured) {
+    return statTileEmpty("Pageviews (30d)", "No Vercel projects tracked yet");
+  }
+  if (!analytics.projects.length) {
+    return statTileEmpty("Pageviews (30d)", "Vercel Analytics not connected");
+  }
+  return analytics.projects
+    .map((p) =>
+      p.error
+        ? statTileEmpty(escapeHtml(p.label), "Vercel error")
+        : statTile(p.pageviews.toLocaleString(), `${escapeHtml(p.label)} · ${p.days}d`)
+    )
+    .join("");
+}
+
+function renderVercelProjectForm(projects) {
+  const chips = projects
+    .map((p) => `<span class="repo-chip">${escapeHtml(p.label)}<button data-remove-vercel-project="${escapeHtml(p.project_id)}" title="Stop tracking">×</button></span>`)
+    .join("");
+  return `
+    ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
+    <div class="new-goal-form" style="margin-top:8px;">
+      <input id="monitor-vercel-input" type="text" placeholder="Vercel project ID (prj_...)">
+      <input id="monitor-vercel-label" type="text" placeholder="Label (optional)">
+      <button id="monitor-vercel-add">Track</button>
+    </div>
+  `;
+}
+
+function renderShippingLog(shipping) {
+  if (!shipping.configured) {
+    return '<div class="empty-state">No repos tracked yet — add one below to see recent commits.</div>';
+  }
+  if (!shipping.commits || !shipping.commits.length) {
+    return '<div class="empty-state">No recent commits found for the tracked repo(s).</div>';
+  }
+  return shipping.commits
+    .map(
+      (c) => `
+    <div class="commit-row">
+      <span class="commit-sha">${escapeHtml(c.sha)}</span>
+      <span class="commit-msg" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</span>
+      <span class="commit-repo">${escapeHtml(c.label)} · ${timeAgo(c.date)}</span>
+    </div>`
+    )
+    .join("");
+}
+
+function renderShippingRepoForm(repos) {
+  const chips = repos
+    .map((r) => `<span class="repo-chip">${escapeHtml(r.label)}<button data-remove-repo="${escapeHtml(r.repo)}" title="Stop tracking">×</button></span>`)
+    .join("");
+  return `
+    ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
+    <div class="new-goal-form" style="margin-top:8px;">
+      <input id="monitor-repo-input" type="text" placeholder="owner/name (GitHub repo)">
+      <input id="monitor-repo-label" type="text" placeholder="Label (optional)">
+      <button id="monitor-repo-add">Track</button>
+    </div>
+  `;
+}
+
+function renderIdeaBugForm() {
+  return `
+    <div class="new-goal-form">
+      <input id="monitor-ib-title" type="text" placeholder="Idea or bug title">
+      <input id="monitor-ib-project" type="text" placeholder="Project (optional)">
+      <select id="monitor-ib-kind" style="padding:10px 14px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;">
+        <option value="idea">Idea</option>
+        <option value="bug">Bug</option>
+      </select>
+      <button id="monitor-ib-add">Add</button>
+    </div>
+  `;
+}
+
+function renderIdeasBugs(items) {
+  if (!items.length) return '<div class="empty-state">Nothing logged yet — add one above, or tell Edith in chat.</div>';
+  return items.map(renderIdeaBugCard).join("");
+}
+
+function renderIdeaBugCard(item) {
+  return `
+    <div class="idea-bug-card" data-item-id="${item.id}">
+      <div class="idea-bug-top">
+        <span class="kind-badge ${item.kind}">${item.kind}</span>
+        ${item.project ? `<span class="idea-bug-meta">${escapeHtml(item.project)}</span>` : ""}
+      </div>
+      <div class="idea-bug-title">${escapeHtml(item.title)}</div>
+      <div class="idea-bug-meta">${timeAgo(item.created_at)}</div>
+      ${item.note ? `<div class="idea-bug-note">${escapeHtml(item.note)}</div>` : ""}
+      <div class="idea-bug-actions">
+        <button data-resolve-ib="${item.id}">Resolve</button>
+        <button data-delete-ib="${item.id}">Delete</button>
+      </div>
+    </div>`;
+}
+
+function renderNews(text) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="empty-state">No headlines found.</div>';
+  return lines.map((l) => `<div class="news-item">${escapeHtml(l)}</div>`).join("");
+}
+
+function renderSocialSummary(social) {
+  const strategy = social.content_strategy || [];
+  const skills = social.skills || [];
+  if (!strategy.length && !skills.length) {
+    return '<div class="empty-state">Nothing saved yet — use /skill-talk in chat to tell Edith about your content goals.</div>';
+  }
+  const strategyBlock = strategy.length
+    ? strategy.map((f) => `<div class="list-item"><div class="list-title">${escapeHtml(f.key)}</div><div class="list-meta">${escapeHtml(f.value)}</div></div>`).join("")
+    : '<div class="empty-state">No content strategy saved yet — use /skill-talk.</div>';
+  const skillsBlock = skills.length
+    ? skills.map((s) => `<div class="list-item"><div class="list-title">${escapeHtml(s.title)}</div><div class="list-meta">${escapeHtml(s.preview)}</div></div>`).join("")
+    : '<div class="empty-state">No skill files saved yet.</div>';
+  return `<h3 style="margin-top:0">Content strategy</h3>${strategyBlock}<h3>Skill files</h3>${skillsBlock}`;
+}
+
+function wireMonitorActions(panel) {
+  document.getElementById("monitor-vercel-add").addEventListener("click", async () => {
+    const idEl = document.getElementById("monitor-vercel-input");
+    const labelEl = document.getElementById("monitor-vercel-label");
+    const projectId = idEl.value.trim();
+    if (!projectId) return;
+    try {
+      await apiPost("/api/monitor/analytics/projects", { project_id: projectId, label: labelEl.value.trim() });
+      loadMonitor();
+    } catch (err) {
+      alert("Failed to track project: " + err.message);
+    }
+  });
+
+  panel.querySelectorAll("[data-remove-vercel-project]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost("/api/monitor/analytics/projects/delete", { project_id: btn.dataset.removeVercelProject });
+        loadMonitor();
+      } catch (err) {
+        alert("Failed to untrack project: " + err.message);
+      }
+    });
+  });
+
+  document.getElementById("monitor-repo-add").addEventListener("click", async () => {
+    const repoEl = document.getElementById("monitor-repo-input");
+    const labelEl = document.getElementById("monitor-repo-label");
+    const repo = repoEl.value.trim();
+    if (!repo) return;
+    try {
+      await apiPost("/api/monitor/shipping/repos", { repo, label: labelEl.value.trim() });
+      loadMonitor();
+    } catch (err) {
+      alert("Failed to track repo: " + err.message);
+    }
+  });
+
+  panel.querySelectorAll("[data-remove-repo]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost("/api/monitor/shipping/repos/delete", { repo: btn.dataset.removeRepo });
+        loadMonitor();
+      } catch (err) {
+        alert("Failed to untrack repo: " + err.message);
+      }
+    });
+  });
+
+  document.getElementById("monitor-ib-add").addEventListener("click", async () => {
+    const titleEl = document.getElementById("monitor-ib-title");
+    const projectEl = document.getElementById("monitor-ib-project");
+    const kindEl = document.getElementById("monitor-ib-kind");
+    const title = titleEl.value.trim();
+    if (!title) return;
+    try {
+      await apiPost("/api/monitor/ideas-bugs", { kind: kindEl.value, title, project: projectEl.value.trim() });
+      loadMonitor();
+    } catch (err) {
+      alert("Failed to add: " + err.message);
+    }
+  });
+
+  panel.querySelectorAll("[data-resolve-ib]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost(`/api/monitor/ideas-bugs/${btn.dataset.resolveIb}/resolve`, {});
+        loadMonitor();
+      } catch (err) {
+        alert("Failed to resolve: " + err.message);
+      }
+    });
+  });
+
+  panel.querySelectorAll("[data-delete-ib]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Delete this?")) return;
+      try {
+        await apiPost(`/api/monitor/ideas-bugs/${btn.dataset.deleteIb}/delete`, {});
+        loadMonitor();
+      } catch (err) {
+        alert("Failed to delete: " + err.message);
+      }
+    });
+  });
+
+  document.getElementById("monitor-news-refresh").addEventListener("click", async () => {
+    const btn = document.getElementById("monitor-news-refresh");
+    const newsEl = document.getElementById("monitor-news");
+    const topic = document.getElementById("monitor-news-topic").value.trim();
+    btn.textContent = "Loading…";
+    btn.disabled = true;
+    try {
+      const data = await apiGet("/api/monitor/news", { topic });
+      newsEl.innerHTML = renderNews(data.text);
+    } catch (err) {
+      newsEl.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+    }
+    btn.textContent = "Refresh";
+    btn.disabled = false;
   });
 }

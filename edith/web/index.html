@@ -342,6 +342,30 @@
   .mcp-card-actions { display: flex; gap: 8px; margin-top: 10px; }
   .mcp-card-actions button { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 14px; font-size: 12px; cursor: pointer; }
   .subtle-note { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+
+  /* --- Monitor tab --- */
+  .idea-bug-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 8px; }
+  .idea-bug-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .kind-badge { font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); padding: 3px 10px; white-space: nowrap; flex-shrink: 0; }
+  .kind-badge.idea { background: var(--surface-2); color: var(--text); }
+  .kind-badge.bug { background: var(--danger); color: #fff; }
+  .idea-bug-title { font-weight: 600; font-size: 14px; }
+  .idea-bug-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .idea-bug-note { font-size: 12px; color: var(--text); opacity: 0.85; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); white-space: pre-wrap; }
+  .idea-bug-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .idea-bug-actions button { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 14px; font-size: 12px; cursor: pointer; min-height: 30px; }
+
+  .commit-row { display: flex; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .commit-row:last-child { border-bottom: none; }
+  .commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .commit-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .commit-repo { font-size: 11px; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+
+  .news-item { padding: 10px 0; border-bottom: 1px dashed var(--border); font-size: 13px; line-height: 1.5; }
+  .news-item:last-child { border-bottom: none; }
+
+  .repo-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px 6px 4px 12px; font-size: 12px; margin: 0 6px 6px 0; }
+  .repo-chip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 6px; }
 </style>
 </head>
 <body>
@@ -358,6 +382,7 @@
       <div id="tab-buttons">
         <button class="tab-btn" data-tab="overview"><span class="tab-icon">🏠</span><span class="tab-label">Overview</span></button>
         <button class="tab-btn" data-tab="chat"><span class="tab-icon">💬</span><span class="tab-label">Chat</span></button>
+        <button class="tab-btn" data-tab="monitor"><span class="tab-icon">🖥️</span><span class="tab-label">Monitor</span></button>
         <button class="tab-btn" data-tab="observability"><span class="tab-icon">📊</span><span class="tab-label">Usage</span></button>
         <button class="tab-btn" data-tab="goals"><span class="tab-icon">🎯</span><span class="tab-label">Goals</span></button>
         <button class="tab-btn" data-tab="todos"><span class="tab-icon">✅</span><span class="tab-label">Todos</span></button>
@@ -382,6 +407,7 @@
       </div>
     </div>
 
+    <div id="monitor-screen" class="screen"><div class="panel" id="monitor-panel"></div></div>
     <div id="observability-screen" class="screen"><div class="panel" id="observability-panel"></div></div>
     <div id="goals-screen" class="screen"><div class="panel" id="goals-panel"></div></div>
     <div id="todos-screen" class="screen"><div class="panel" id="todos-panel"></div></div>

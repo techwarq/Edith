@@ -42,6 +42,11 @@ def settings(tmp_path):
         qdrant_api_key="",
         firebase_service_account_json="",
         hunter_api_key="",
+        dodo_payments_api_key="",
+        dodo_payments_base_url="https://live.dodopayments.com",
+        vercel_analytics_token="",
+        vercel_team_id="",
+        github_token="",
     )
 
 
@@ -185,6 +190,32 @@ def test_approve_whatsapp_action_unaffected_by_missing_google_auth(monkeypatch, 
 
     assert calls == [(None, {"chat_name": "Mom", "message": "hi"})]
     assert output == "Message sent."
+
+
+def test_skill_talk_no_arg_shows_usage(conn, settings):
+    _, _, output = commands.handle_command("/skill-talk", conn, settings, "sid", agent=None, voice_enabled=False)
+    assert "Usage" in output
+
+
+def test_skill_talk_forwards_directive_to_agent(conn, settings):
+    class FakeAgent:
+        def __init__(self):
+            self.calls = []
+
+        def handle_turn(self, session_id, text):
+            self.calls.append((session_id, text))
+            return "Got it — noted your niche and platforms."
+
+    agent = FakeAgent()
+    _, _, output = commands.handle_command(
+        "/skill-talk I write about AI agents, mainly on X", conn, settings, "sid", agent=agent, voice_enabled=False
+    )
+    assert output == "Got it — noted your niche and platforms."
+    assert len(agent.calls) == 1
+    session_id, directive = agent.calls[0]
+    assert session_id == "sid"
+    assert "I write about AI agents, mainly on X" in directive
+    assert "content_strategy" in directive
 
 
 def test_unknown_command(conn, settings):

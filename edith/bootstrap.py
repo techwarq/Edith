@@ -26,7 +26,9 @@ from edith.tools import hunter as hunter_tool
 from edith.tools import mcp_client
 from edith.tools import monid as monid_tool
 from edith.tools import news as news_tool
+from edith.tools import monitor as monitor_tool
 from edith.tools import notes, notify, scheduling, tracking, web_search
+from edith.tools import social as social_tool
 from edith.tools import todos as todos_tool
 from edith.tools import youtube as youtube_tool
 from edith.tools.registry import ToolRegistry
@@ -38,7 +40,9 @@ WELCOME = (
     "Commands: /afame <fact> (save a fact about you), /talk (speak instead of "
     "typing), /voice on|off (speak replies aloud), /google login (connect Gmail/"
     "Drive/Calendar/Docs/Sheets), /whatsapp login (connect WhatsApp), /health login "
-    "(connect Health Connect, Android app only), /approve (review queued actions), "
+    "(connect Health Connect, Android app only), /skill-talk <what you want to achieve> "
+    "(tell me your niche, voice, platforms, and goals so I can give you grounded X/Instagram "
+    "post and video ideas), /approve (review queued actions), "
     "/new (fresh session), /facts (what I know), /history <query> (search past "
     "conversations), /jobs [count] (recent output from scheduled jobs + nightly "
     "reflection), /exit\n"
@@ -88,6 +92,8 @@ def build_registry(
     health_tool.register(registry, conn)
     browse.register(registry, conn)
     tracking.register(registry, conn)
+    social_tool.register(registry, conn, qdrant_client, genai_client)
+    monitor_tool.register(registry, conn)
     scheduling.register(registry, settings)
     notify.register(registry, conn, settings)
     monid_tool.register(registry)

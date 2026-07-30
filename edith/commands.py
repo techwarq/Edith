@@ -52,6 +52,31 @@ def handle_command(
         reply = agent.handle_turn(session_id, directive)
         return session_id, voice_enabled, reply
 
+    if cmd == "/skill-talk":
+        if not arg:
+            return (
+                session_id,
+                voice_enabled,
+                "Usage: /skill-talk <tell me about your content — your niche/expertise, the "
+                "platforms you care about (X, Instagram), your voice/tone, and any growth or "
+                "consistency goal you have>",
+            )
+        directive = (
+            "The user is telling you what they want to achieve with their social media content, so "
+            "you can act as their X/Instagram growth assistant going forward: proposing post and "
+            "video ideas, and helping them stay consistent. If anything important is unclear — their "
+            "niche/expertise, target platforms, voice/tone, content pillars, or a growth/posting-"
+            "cadence goal — ask a brief follow-up before saving. Otherwise, save each distinct thing "
+            "you learn as its own durable fact via save_fact with category='content_strategy' (don't "
+            "bundle everything into one fact). If they state a concrete growth or consistency goal "
+            "(e.g. 'post 3x/week', 'grow to 10k followers by December'), also call create_goal for it. "
+            "If they're sharing actual reference material (a writing sample, a style guide, past post "
+            "examples) rather than describing intent, use save_social_skill instead. Then briefly "
+            "confirm back what you understood. Here's what they said: " + arg
+        )
+        reply = agent.handle_turn(session_id, directive)
+        return session_id, voice_enabled, reply
+
     if cmd == "/voice":
         choice = arg.strip().lower()
         if choice not in ("on", "off"):

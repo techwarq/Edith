@@ -13,24 +13,31 @@ from edith.tools.registry import ToolRegistry
 logger = logging.getLogger("edith.tools.news")
 
 
+def fetch_news(client: genai.Client, model: str, topic: str = "") -> str:
+    """Standalone so the Situation Monitor dashboard's Live News panel
+    (edith/monitor/api.py) can call the same grounded-search logic without
+    going through the tool registry — this is the one function both call."""
+    subject = f"about {topic}" if topic else "on general current events"
+    prompt = (
+        f"Search for recent news headlines {subject} from the last 24-48 hours. "
+        "Summarize the top 5 in a spoken-friendly style: one line per item, "
+        "headline followed by a one-sentence summary. Include rough dates where relevant."
+    )
+    try:
+        resp = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
+        )
+        return resp.text or "No recent news found."
+    except Exception as e:  # noqa: BLE001 — surface as a tool error, don't crash the loop
+        logger.exception("get_news failed for topic=%r", topic)
+        return f"ERROR: news fetch failed: {e}"
+
+
 def register(registry: ToolRegistry, client: genai.Client, model: str) -> None:
     def get_news(topic: str = "") -> str:
-        subject = f"about {topic}" if topic else "on general current events"
-        prompt = (
-            f"Search for recent news headlines {subject} from the last 24-48 hours. "
-            "Summarize the top 5 in a spoken-friendly style: one line per item, "
-            "headline followed by a one-sentence summary. Include rough dates where relevant."
-        )
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
-            )
-            return resp.text or "No recent news found."
-        except Exception as e:  # noqa: BLE001 — surface as a tool error, don't crash the loop
-            logger.exception("get_news failed for topic=%r", topic)
-            return f"ERROR: news fetch failed: {e}"
+        return fetch_news(client, model, topic)
 
     registry.register(
         {

@@ -37,6 +37,7 @@ from edith.memory import db, store
 from edith.goals import api as goals_api
 from edith.mcp import api as mcp_api
 from edith.memory import health as health_metrics
+from edith.monitor import api as monitor_api
 from edith.observability import api as observability_api
 from edith.observability.seed_evals import seed_default_evals
 from edith.temporal import api as deep_research_api
@@ -64,6 +65,7 @@ app.include_router(goals_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(todos_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(mcp_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(deep_research_api.build_router(ctx.conn, settings, API_TOKEN))
+app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.tts_client, API_TOKEN))
 
 
 @app.middleware("http")

@@ -175,6 +175,22 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status, due_date);
 
+-- Situation Monitor dashboard tab's Ideas + Bugs panel. Revenue/analytics/shipping-log
+-- data on that same tab is pulled live from external APIs (Dodo Payments/Vercel/GitHub)
+-- rather than stored here — this is the one panel with no external source, since it's
+-- the user's own notes, not something a third-party API already tracks.
+CREATE TABLE IF NOT EXISTS ideas_bugs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind         TEXT NOT NULL CHECK(kind IN ('idea','bug')),
+    title        TEXT NOT NULL,
+    note         TEXT,
+    project      TEXT,
+    status       TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')),
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    resolved_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ideas_bugs_status ON ideas_bugs(status, created_at);
+
 -- User-added MCP (Model Context Protocol) servers, wired in from the web
 -- dashboard's Integrations tab — no code change/redeploy needed to add one.
 -- Only stdio-based servers (command + args + optional env) are supported;
