@@ -115,7 +115,8 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         )
         commits = [c for batch in commit_lists for c in batch]
         commits.sort(key=lambda c: c.get("date") or "", reverse=True)
-        return JSONResponse({"configured": True, "repos": repos, "accounts": accounts, "commits": commits})
+        pushes = github_shipping.group_pushes(commits)
+        return JSONResponse({"configured": True, "repos": repos, "accounts": accounts, "commits": commits, "pushes": pushes})
 
     @router.post("/shipping/repos", response_model=None)
     async def add_shipping_repo(request: Request) -> JSONResponse:

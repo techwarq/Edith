@@ -1572,12 +1572,32 @@ function renderVercelProjectForm(projects) {
   `;
 }
 
+// Summarised pushes, not the raw commit log: each row is one push (a time-
+// clustered run of commits to a repo, grouped server-side in
+// github_shipping.group_pushes), headlined by its most noteworthy commit with
+// a count of the rest — so the panel reads as "what shipped". Falls back to
+// the raw commit stream only if an older backend didn't send `pushes`.
 function renderShippingLog(shipping) {
   if (!shipping.configured) {
-    return '<div class="mon-empty">Nothing tracked yet — track a GitHub account below for automatic commits across all its repos, or add individual repos.</div>';
+    return '<div class="mon-empty">Nothing tracked yet — track a GitHub account below for automatic pushes across all its repos, or add individual repos.</div>';
+  }
+  const pushes = shipping.pushes;
+  if (Array.isArray(pushes) && pushes.length) {
+    return pushes
+      .map((p) => {
+        const extra = p.count > 1 ? ` <span class="mon-mono-id">+${p.count - 1}</span>` : "";
+        const count = p.count === 1 ? "1 commit" : `${p.count} commits`;
+        return `
+    <div class="mon-list-row">
+      <span class="mon-mono-id">↑${p.count}</span>
+      <span class="mon-main" title="${escapeHtml(p.headline)}">${escapeHtml(p.headline)}${extra}</span>
+      <span class="mon-side">${monTag(p.label)} · ${count} · ${timeAgo(p.date)}</span>
+    </div>`;
+      })
+      .join("");
   }
   if (!shipping.commits || !shipping.commits.length) {
-    return '<div class="mon-empty">No recent commits found for what\'s tracked.</div>';
+    return '<div class="mon-empty">No recent pushes found for what\'s tracked.</div>';
   }
   return shipping.commits
     .map(
