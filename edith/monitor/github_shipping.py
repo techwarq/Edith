@@ -92,28 +92,73 @@ def get_account_activity(
     actual commit history via get_recent_commits is slower (repo_limit + 1
     calls instead of ~4) but reflects real activity, which is the entire
     point of a shipping log. Excludes forks — a fork's commits aren't this
-    account's own shipping activity."""
+    account's own shipping activity.
+
+    Includes PRIVATE repos when the token belongs to `username`: the public
+    GET /users/{username}/repos never returns another user's private repos
+    even with auth, so for your own account we list repos via the
+    authenticated GET /user/repos (visibility=all) instead. Private repos'
+    commits then come back via get_recent_commits, which already sends the
+    token. Needs a token with `repo` scope to see private repos; without one
+    (or for someone else's username) it gracefully lists only public repos."""
     headers = {"Accept": "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
+    repos_json = _list_own_private_repos(headers) if token and _token_owns(headers, username) else None
+    if repos_json is None:
+        try:
+            resp = requests.get(
+                f"https://api.github.com/users/{username}/repos",
+                headers=headers,
+                params={"sort": "pushed", "per_page": 100},
+                timeout=_TIMEOUT_SECONDS,
+            )
+        except requests.exceptions.RequestException:
+            logger.warning("Network error listing GitHub repos for %s", username, exc_info=True)
+            return []
+        if resp.status_code >= 400:
+            logger.warning("GitHub repo list failed for %s (status %s)", username, resp.status_code)
+            return []
+        repos_json = resp.json()
+
+    owned_repos = [r for r in repos_json if not r.get("fork")]
+    repos = [{"repo": r["full_name"], "label": r["name"]} for r in owned_repos[:repo_limit]]
+    return get_recent_commits(repos, token, per_repo_limit=per_repo_limit)
+
+
+def _token_owns(headers: dict[str, str], username: str) -> bool:
+    """True when the auth token belongs to `username` — i.e. this is the user's
+    own account, so we may list their private repos. GET /user returns the
+    authenticated user; a mismatch (or any error) means treat it as someone
+    else's account and stick to public repos."""
+    try:
+        resp = requests.get("https://api.github.com/user", headers=headers, timeout=_TIMEOUT_SECONDS)
+    except requests.exceptions.RequestException:
+        return False
+    if resp.status_code >= 400:
+        return False
+    return (resp.json().get("login") or "").lower() == username.lower()
+
+
+def _list_own_private_repos(headers: dict[str, str]) -> Optional[list[dict[str, Any]]]:
+    """Repos for the authenticated user including private ones, newest push
+    first. Returns None (not []) on failure so the caller can fall back to the
+    public listing rather than reporting the account as empty."""
     try:
         resp = requests.get(
-            f"https://api.github.com/users/{username}/repos",
+            "https://api.github.com/user/repos",
             headers=headers,
-            params={"sort": "pushed", "per_page": 100},
+            params={"visibility": "all", "affiliation": "owner", "sort": "pushed", "per_page": 100},
             timeout=_TIMEOUT_SECONDS,
         )
     except requests.exceptions.RequestException:
-        logger.warning("Network error listing GitHub repos for %s", username, exc_info=True)
-        return []
+        logger.warning("Network error listing authenticated user's repos", exc_info=True)
+        return None
     if resp.status_code >= 400:
-        logger.warning("GitHub repo list failed for %s (status %s)", username, resp.status_code)
-        return []
-
-    owned_repos = [r for r in resp.json() if not r.get("fork")]
-    repos = [{"repo": r["full_name"], "label": r["name"]} for r in owned_repos[:repo_limit]]
-    return get_recent_commits(repos, token, per_repo_limit=per_repo_limit)
+        logger.warning("GitHub /user/repos failed (status %s)", resp.status_code)
+        return None
+    return resp.json()
 
 
 def _parse_dt(value: Optional[str]) -> Optional[datetime]:
