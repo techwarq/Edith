@@ -64,6 +64,55 @@ def _is_refunded(payment: dict[str, Any]) -> bool:
     return status not in ("", "none", "not_refunded", "no_refund")
 
 
+def _payment_country(p: dict[str, Any]) -> Optional[str]:
+    """Best-effort ISO-3166 alpha-2 country for a payment, used to place it on
+    the globe and pick a flag in the sales ticker. Dodo doesn't document a
+    single canonical field for this, so try the ones that plausibly carry it
+    (billing address, customer, card issuer) and give up gracefully."""
+    for path in (
+        ("billing", "country"),
+        ("customer", "country"),
+        ("customer", "billing", "country"),
+    ):
+        node: Any = p
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, str) and len(node.strip()) == 2:
+            return node.strip().upper()
+    for key in ("country", "card_issuing_country", "card_country"):
+        val = p.get(key)
+        if isinstance(val, str) and len(val.strip()) == 2:
+            return val.strip().upper()
+    return None
+
+
+def _payment_product(p: dict[str, Any]) -> Optional[str]:
+    """Best-effort product/app label for a payment so revenue can be grouped
+    per app (the category tabs + stacked chart). Dodo's /payments items don't
+    reliably expand a product name, so fall back through the fields that might
+    carry one, ending at the raw product id — a stable grouping key even when
+    no human-readable name is available."""
+    pc = p.get("product_cart")
+    if isinstance(pc, list) and pc:
+        first = pc[0]
+        if isinstance(first, dict):
+            for key in ("name", "product_name", "product_id"):
+                val = first.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+    for key in ("product_name", "product_id"):
+        val = p.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    prod = p.get("product")
+    if isinstance(prod, dict):
+        for key in ("name", "product_id", "id"):
+            val = prod.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return None
+
+
 def _monthly_equivalent(amount: int, interval: Optional[str], count: Optional[int]) -> float:
     months = _MONTHS_PER_CYCLE.get(interval or "Month", 1.0) * max(count or 1, 1)
     return amount / months if months else 0.0
@@ -92,8 +141,28 @@ def get_revenue_summary(base_url: str, api_key: str) -> dict[str, Any]:
             "amount_usd": (latest.get("total_amount") or 0) / 100,
             "currency": latest.get("currency"),
             "customer_name": (latest.get("customer") or {}).get("name"),
+            "country": _payment_country(latest),
             "created_at": latest.get("created_at"),
         }
+
+    # Compact per-payment feed — the raw material the Situation Monitor's
+    # front end buckets/filters itself (globe pings, stacked revenue-over-time
+    # chart, and the scrolling sales ticker). Newest first, capped so the
+    # payload stays small; server aggregates above stay authoritative for the
+    # all-time tiles.
+    ordered = sorted(payments, key=lambda p: p.get("created_at") or "", reverse=True)
+    feed = [
+        {
+            "amount_usd": (p.get("total_amount") or 0) / 100,
+            "refunded_usd": (p.get("total_amount") or 0) / 100 if _is_refunded(p) else 0.0,
+            "currency": p.get("currency"),
+            "country": _payment_country(p),
+            "customer_name": (p.get("customer") or {}).get("name"),
+            "product": _payment_product(p),
+            "created_at": p.get("created_at"),
+        }
+        for p in ordered
+    ]
 
     return {
         "configured": True,
@@ -102,5 +171,6 @@ def get_revenue_summary(base_url: str, api_key: str) -> dict[str, Any]:
         "mrr_usd": mrr_cents / 100,
         "active_subscriptions": len(subscriptions),
         "last_payment": last_payment,
+        "payments": feed,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }

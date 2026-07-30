@@ -1044,9 +1044,30 @@ function monTag(label) {
   return `<span class="mon-tag" style="color:${monTagColor(label)}">${escapeHtml(label)}</span>`;
 }
 
+// Situation Monitor client state. `monData` caches the last loaded payloads
+// so filter/tab changes re-render instantly without re-hitting the backend;
+// `monState` is the active filter (time range, chart granularity, exclude-
+// investments, anonymize amounts, selected category) and is persisted to
+// localStorage so the board comes back the way you left it. `monGlobeRAF`
+// tracks the globe's animation frame so a re-render can cancel the old loop.
+const MON_STATE_KEY = "edith.monitor.filters";
+const monDefaultState = () => ({ range: "all", granularity: "monthly", exInv: false, anon: false, category: "ALL" });
+let monData = null;
+let monState = monDefaultState();
+let monGlobeRAF = null;
+
+function loadMonState() {
+  try {
+    return { ...monDefaultState(), ...(JSON.parse(localStorage.getItem(MON_STATE_KEY)) || {}) };
+  } catch {
+    return monDefaultState();
+  }
+}
+
 async function loadMonitor() {
   const panel = document.getElementById("monitor-panel");
   panel.innerHTML = '<div class="mon-empty">Loading…</div>';
+  monState = loadMonState();
   try {
     const [revenue, analytics, shipping, social, ideasBugs] = await Promise.all([
       apiGet("/api/monitor/revenue"),
@@ -1055,75 +1076,466 @@ async function loadMonitor() {
       apiGet("/api/monitor/social"),
       apiGet("/api/monitor/ideas-bugs", { status: "open" }),
     ]);
-    renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs.items);
+    monData = { revenue, analytics, shipping, social, ideasBugs: ideasBugs.items };
+    renderMonitor(panel);
   } catch (err) {
     panel.innerHTML = `<div class="mon-empty">Failed to load: ${escapeHtml(err.message)}</div>`;
   }
 }
 
-function renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs) {
+function renderMonitor(panel) {
+  const { revenue, analytics, shipping, social, ideasBugs } = monData;
+  const categories = monCategories(revenue);
+  const stats = monComputeStats(revenue);
+
   panel.innerHTML = `
-    <div class="mon-row">
-      <div class="mon-section-title">Revenue</div>
-      <div class="mon-stat-row">${renderRevenueStats(revenue)}</div>
-    </div>
-
-    <div class="mon-row mon-grid">
-      <div class="mon-panel">
-        <div class="mon-section-title">Analytics</div>
-        <div class="mon-stat-row" id="monitor-analytics">${renderAnalyticsStats(analytics)}</div>
-        ${renderVercelProjectForm(analytics.projects || [])}
-      </div>
-
-      <div class="mon-panel">
-        <div class="mon-section-title">Shipping log</div>
-        <div id="monitor-shipping">${renderShippingLog(shipping)}</div>
-        ${renderShippingAccountForm(shipping.accounts || [])}
-        ${renderShippingRepoForm(shipping.repos || [])}
-      </div>
-
-      <div class="mon-panel">
-        <div class="mon-section-title">Ideas + bugs</div>
-        ${renderIdeaBugForm()}
-        <div id="monitor-ideas-bugs">${renderIdeasBugs(ideasBugs)}</div>
-      </div>
-    </div>
-
-    <div class="mon-row mon-grid">
-      <div class="mon-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div class="mon-section-title" style="margin-bottom:0">Live news</div>
-          <button class="mon-refresh" id="monitor-news-refresh">Refresh</button>
+    ${renderMonTopbar()}
+    ${renderMonTabs(categories)}
+    <div class="mon-board">
+      <div class="mon-cell area-globe">
+        <div class="mon-cell-head">
+          <span class="mon-cell-title">Live Revenue</span>
+          <span class="mon-live">Live</span>
         </div>
-        <div class="mon-form"><input id="monitor-news-topic" type="text" placeholder="Topic (optional)"></div>
-        <div id="monitor-news" style="margin-top:8px;"><div class="mon-empty">Click Refresh to fetch the latest headlines.</div></div>
+        ${renderGlobeCell(revenue)}
       </div>
 
-      <div class="mon-panel">
-        <div class="mon-section-title">Social media</div>
+      <div class="mon-cell area-ship">
+        <div class="mon-cell-head"><span class="mon-cell-title">Shipping Log</span><span class="mon-cell-title" style="color:var(--mon-muted)">github</span></div>
+        <div class="mon-scroll" id="monitor-shipping">${renderShippingLog(shipping)}</div>
+        <details class="mon-inline-form"><summary>＋ track repos / accounts</summary>
+          ${renderShippingAccountForm(shipping.accounts || [])}
+          ${renderShippingRepoForm(shipping.repos || [])}
+        </details>
+      </div>
+
+      <div class="mon-cell area-ideas">
+        <div class="mon-cell-head"><span class="mon-cell-title">Ideas + Bugs</span></div>
+        <div class="mon-scroll" id="monitor-ideas-bugs">${renderIdeasBugs(ideasBugs)}</div>
+        <details class="mon-inline-form"><summary>＋ add idea / bug</summary>${renderIdeaBugForm()}</details>
+      </div>
+
+      <div class="mon-cell area-chart">
+        <div class="mon-cell-head"><span class="mon-cell-title">Revenue Over Time</span></div>
+        ${renderRevenueChart(revenue, categories)}
+      </div>
+
+      <div class="mon-cell area-media">
+        <div class="mon-cell-head"><span class="mon-cell-title">Live News</span><button class="mon-refresh" id="monitor-news-refresh">Refresh</button></div>
+        <div class="mon-form" style="margin-top:0"><input id="monitor-news-topic" type="text" placeholder="Topic (optional)"></div>
+        <div class="mon-scroll" id="monitor-news" style="margin-top:8px;"><div class="mon-empty">Click Refresh to fetch the latest headlines.</div></div>
+        <div class="mon-cell-title" style="margin:14px 0 8px;">Social Media</div>
         <div id="monitor-social">${renderSocialSummary(social)}</div>
       </div>
+
+      <div class="mon-cell area-stats">
+        <div class="mon-cell-head"><span class="mon-cell-title">Revenue</span><span class="mon-cell-title" style="color:var(--mon-muted)">${escapeHtml(monState.category)}</span></div>
+        ${renderBigStats(revenue, stats)}
+        <div class="mon-cell-title" style="margin:14px 0 8px;">Visitors</div>
+        <div class="mon-stat-row" id="monitor-analytics">${renderAnalyticsStats(analytics)}</div>
+        <details class="mon-inline-form"><summary>＋ track vercel project</summary>${renderVercelProjectForm(analytics.projects || [])}</details>
+      </div>
     </div>
+    ${renderMonStatusBar(revenue, analytics, shipping, stats)}
+    ${renderMonTicker(revenue)}
   `;
 
   wireMonitorActions(panel);
+  startGlobe(panel, revenue);
 }
 
-function renderRevenueStats(revenue) {
-  const tiles = [];
-  if (!revenue.configured) {
-    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(monTileEmpty(label, "Dodo Payments not connected")));
-  } else if (revenue.error) {
-    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(monTileError(label, "Dodo Payments error")));
-  } else {
-    tiles.push(monTile(fmtMoney(revenue.gross_revenue_usd), "Gross revenue"));
-    tiles.push(monTile(fmtMoney(revenue.mrr_usd), "MRR"));
-    tiles.push(monTile(fmtMoney(revenue.net_revenue_usd), "Net revenue"));
-    const lp = revenue.last_payment;
-    const lpNote = lp ? `${lp.customer_name ? escapeHtml(lp.customer_name) + " · " : ""}${timeAgo(lp.created_at)}` : "";
-    tiles.push(monTile(lp ? fmtMoney(lp.amount_usd) : "—", "Last payment", lpNote));
+// --- Filter state helpers ---------------------------------------------------
+//
+// The board is driven client-side off revenue.payments (the compact per-payment
+// feed the backend now returns): the active time range, "exclude investments"
+// toggle and selected category tab all filter that feed, and the tiles /
+// globe / ticker recompute from the filtered slice so every control affects
+// the whole board at once — the way the reference dashboard behaves.
+
+const MON_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monSaveState() {
+  try { localStorage.setItem(MON_STATE_KEY, JSON.stringify(monState)); } catch { /* ignore */ }
+}
+
+function monProduct(p) { return (p && p.product) || "Other"; }
+
+// Distinct product labels across all payments (first-seen order) — the source
+// for both the category tabs and the stacked-chart series order.
+function monCategories(revenue) {
+  if (!revenue || !revenue.configured || !Array.isArray(revenue.payments)) return [];
+  const seen = [];
+  for (const p of revenue.payments) {
+    const label = monProduct(p);
+    if (!seen.includes(label)) seen.push(label);
   }
-  return tiles.join("");
+  return seen.slice(0, 12);
+}
+
+function monRangeCutoff() {
+  const now = Date.now();
+  const day = 86400000;
+  if (monState.range === "7d") return now - 7 * day;
+  if (monState.range === "30d") return now - 30 * day;
+  if (monState.range === "1y") return now - 365 * day;
+  return -Infinity;
+}
+
+function monFilterPayments(payments, { byCategory = true } = {}) {
+  const cutoff = monRangeCutoff();
+  return (payments || []).filter((p) => {
+    if (cutoff !== -Infinity) {
+      const t = new Date(p.created_at).getTime();
+      if (!(t >= cutoff)) return false;
+    }
+    const prod = monProduct(p);
+    if (monState.exInv && /invest/i.test(prod)) return false;
+    if (byCategory && monState.category !== "ALL" && prod !== monState.category) return false;
+    return true;
+  });
+}
+
+function monComputeStats(revenue) {
+  if (!revenue || !revenue.configured) return { configured: false };
+  if (revenue.error) return { configured: true, error: true };
+  const fp = monFilterPayments(revenue.payments);
+  const gross = fp.reduce((s, p) => s + (p.amount_usd || 0), 0);
+  const refunded = fp.reduce((s, p) => s + (p.refunded_usd || 0), 0);
+  return { configured: true, gross, net: gross - refunded, count: fp.length, mrr: revenue.mrr_usd || 0, last: fp[0] || revenue.last_payment || null };
+}
+
+// Money, with the "Anon" toggle redacting digits into blocks (keeps currency
+// symbol/separators so the shape reads, exactly like the reference's censored
+// numbers) instead of showing the real figure.
+function monMoney(v) {
+  const s = fmtMoney(v);
+  return monState.anon ? `<span class="mon-redact">${s.replace(/[0-9]/g, "▮")}</span>` : s;
+}
+
+function countryFlag(cc) {
+  if (!cc || !/^[A-Za-z]{2}$/.test(cc)) return "🏳️";
+  return String.fromCodePoint(...cc.toUpperCase().split("").map((c) => 0x1f1e6 - 65 + c.charCodeAt(0)));
+}
+
+// --- Top bar + category tabs -----------------------------------------------
+
+function monFbtn(kind, val, label) {
+  const active = monState[kind] === val ? "active" : "";
+  return `<button class="mon-fbtn ${active}" data-set="${kind}" data-val="${val}">${label}</button>`;
+}
+
+function renderMonTopbar() {
+  const ranges = [["7d", "7d"], ["30d", "30d"], ["1y", "1y"], ["all", "All"]].map(([v, l]) => monFbtn("range", v, l)).join("");
+  const grans = [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["yearly", "Yearly"]].map(([v, l]) => monFbtn("granularity", v, l)).join("");
+  return `
+    <div class="mon-topbar">
+      <span class="mon-brand">SITUATION MONITOR</span>
+      <div class="mon-filters">
+        <div class="mon-fgroup">${ranges}</div>
+        <div class="mon-fgroup">${grans}</div>
+        <button class="mon-fbtn toggle ${monState.exInv ? "active" : ""}" data-toggle="exInv">Ex Inv</button>
+        <button class="mon-fbtn toggle ${monState.anon ? "active" : ""}" data-toggle="anon">Anon</button>
+        <div class="mon-fgroup"><button class="mon-fbtn" data-action="save">Save</button><button class="mon-fbtn" data-action="reset">Reset</button></div>
+      </div>
+    </div>`;
+}
+
+function renderMonTabs(categories) {
+  const tab = (label, color) => {
+    const active = monState.category === label;
+    const style = active ? `border-bottom-color:${color}` : "";
+    return `<button class="mon-tab ${active ? "active" : ""}" data-cat="${escapeHtml(label)}" style="${style}">${escapeHtml(label)}</button>`;
+  };
+  let html = tab("ALL", "var(--mon-text)");
+  for (const c of categories) html += tab(c, monTagColor(c));
+  return `<div class="mon-tabs">${html}</div>`;
+}
+
+// --- Big revenue stat tiles -------------------------------------------------
+
+function monBigStat(label, valueHtml, note, empty) {
+  return `<div class="mon-bigstat"><div class="mon-bigstat-label">${label}</div><div class="mon-bigstat-value ${empty ? "is-empty" : ""}">${valueHtml}</div>${note ? `<div class="mon-bigstat-note">${note}</div>` : ""}</div>`;
+}
+
+function renderBigStats(revenue, stats) {
+  let inner;
+  if (!stats.configured) {
+    inner = ["Gross Revenue", "MRR", "Last Payment", "Net Revenue"].map((l) => monBigStat(l, "—", "Dodo Payments not connected", true)).join("");
+  } else if (stats.error) {
+    inner = ["Gross Revenue", "MRR", "Last Payment", "Net Revenue"].map((l) => monBigStat(l, "—", "Dodo Payments error", true)).join("");
+  } else {
+    const lp = stats.last;
+    const lpNote = lp
+      ? `${countryFlag(lp.country)} ${lp.customer_name ? escapeHtml(lp.customer_name) + " · " : ""}${timeAgo(lp.created_at)}`
+      : "no payments in range";
+    inner =
+      monBigStat("Gross Revenue", monMoney(stats.gross), `${stats.count} payment${stats.count === 1 ? "" : "s"}`) +
+      monBigStat("MRR", monMoney(stats.mrr), "recurring") +
+      monBigStat("Last Payment", lp ? monMoney(lp.amount_usd) : "—", lpNote, !lp) +
+      monBigStat("Net Revenue", monMoney(stats.net), "after refunds");
+  }
+  return `<div class="mon-bigstats">${inner}</div>`;
+}
+
+// --- Live-revenue globe -----------------------------------------------------
+//
+// Hand-rolled canvas globe (no external lib — the board must stay self-
+// contained like the rest of this codebase): a shaded, slightly tilted, slowly
+// rotating sphere with a dotted graticule and glowing payment pings placed by
+// each payment's billing country. Only the front-facing hemisphere is drawn,
+// and the newest few pings get a label + expanding pulse, mirroring the
+// reference's "$10 KZ 8h" call-outs.
+
+const MON_COUNTRY_CENTROIDS = {
+  US: [38, -97], CA: [56, -106], MX: [23, -102], BR: [-10, -55], AR: [-38, -63], CL: [-30, -71], CO: [4, -73], PE: [-10, -76], VE: [8, -66],
+  GB: [54, -2], IE: [53, -8], FR: [46, 2], DE: [51, 10], ES: [40, -4], PT: [39, -8], IT: [42, 12], NL: [52, 5], BE: [50, 4], CH: [47, 8],
+  AT: [47, 14], SE: [62, 15], NO: [62, 10], DK: [56, 9], FI: [64, 26], PL: [52, 19], CZ: [49, 15], RO: [46, 25], GR: [39, 22], HU: [47, 19],
+  UA: [49, 32], RU: [61, 100], TR: [39, 35], IL: [31, 35], AE: [24, 54], SA: [24, 45], QA: [25, 51], IN: [22, 78], PK: [30, 70], BD: [24, 90],
+  LK: [7, 81], CN: [35, 105], JP: [36, 138], KR: [36, 128], TW: [24, 121], HK: [22, 114], SG: [1, 104], MY: [4, 102], TH: [15, 101],
+  VN: [16, 108], PH: [13, 122], ID: [-2, 118], AU: [-25, 134], NZ: [-42, 172], ZA: [-30, 25], NG: [10, 8], EG: [27, 30], KE: [1, 38],
+  MA: [32, -6], KZ: [48, 67], NP: [28, 84], BG: [43, 25], HR: [45, 16], RS: [44, 21], SK: [49, 19], SI: [46, 15], EE: [59, 26], LT: [55, 24],
+  LV: [57, 25], IS: [65, -18], LU: [50, 6], CY: [35, 33],
+};
+
+function monPingsFromRevenue(revenue) {
+  if (!revenue || !revenue.configured || !Array.isArray(revenue.payments)) return [];
+  const fp = monFilterPayments(revenue.payments);
+  const pings = [];
+  for (const p of fp) {
+    const c = MON_COUNTRY_CENTROIDS[(p.country || "").toUpperCase()];
+    if (!c) continue;
+    pings.push({ lat: c[0], lng: c[1], amount: p.amount_usd || 0, cc: (p.country || "").toUpperCase(), created_at: p.created_at });
+    if (pings.length >= 80) break;
+  }
+  return pings;
+}
+
+function startGlobe(panel, revenue) {
+  if (monGlobeRAF) cancelAnimationFrame(monGlobeRAF);
+  monGlobeRAF = null;
+  const canvas = panel.querySelector("#mon-globe");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const pings = monPingsFromRevenue(revenue);
+  const TILT = 0.35;
+  let rot = 0;
+  let start = null;
+
+  function project(lat, lng) {
+    const la = (lat * Math.PI) / 180;
+    const lo = ((lng + rot) * Math.PI) / 180;
+    let x = Math.cos(la) * Math.sin(lo);
+    let y = Math.sin(la);
+    let z = Math.cos(la) * Math.cos(lo);
+    const y2 = y * Math.cos(TILT) - z * Math.sin(TILT);
+    const z2 = y * Math.sin(TILT) + z * Math.cos(TILT);
+    return { x, y: y2, z: z2 };
+  }
+
+  function frame(ts) {
+    if (!canvas.isConnected) { monGlobeRAF = null; return; }
+    if (start === null) start = ts;
+    const wrap = canvas.parentElement;
+    const cssW = wrap.clientWidth;
+    const cssH = wrap.clientHeight;
+    if (cssW > 0 && cssH > 0) {
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+      const cx = cssW / 2;
+      const cy = cssH / 2;
+      const R = Math.min(cssW, cssH) / 2 - 20;
+
+      // atmosphere glow
+      const atmo = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.28);
+      atmo.addColorStop(0, "rgba(94,225,255,0.16)");
+      atmo.addColorStop(1, "rgba(94,225,255,0)");
+      ctx.fillStyle = atmo;
+      ctx.beginPath(); ctx.arc(cx, cy, R * 1.28, 0, Math.PI * 2); ctx.fill();
+
+      // shaded sphere body
+      const body = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.15, cx, cy, R);
+      body.addColorStop(0, "#20222b");
+      body.addColorStop(0.6, "#121319");
+      body.addColorStop(1, "#08090c");
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+
+      // dotted graticule (front hemisphere only)
+      ctx.fillStyle = "rgba(150,160,180,0.5)";
+      for (let lat = -80; lat <= 80; lat += 10) {
+        for (let lng = 0; lng < 360; lng += 10) {
+          const pt = project(lat, lng);
+          if (pt.z <= 0) continue;
+          ctx.globalAlpha = 0.1 + pt.z * 0.22;
+          ctx.beginPath();
+          ctx.arc(cx + pt.x * R, cy - pt.y * R, 0.9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // payment pings
+      const now = Date.now();
+      pings.forEach((p, i) => {
+        const pt = project(p.lat, p.lng);
+        if (pt.z <= 0) return;
+        const px = cx + pt.x * R;
+        const py = cy - pt.y * R;
+        const ageH = (now - new Date(p.created_at).getTime()) / 3600000;
+        const recent = ageH < 24;
+        const color = recent ? "#ff7a4d" : "#5ee1ff";
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, 9);
+        glow.addColorStop(0, recent ? "rgba(255,122,77,0.9)" : "rgba(94,225,255,0.85)");
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+        // expanding pulse on the newest few
+        if (i < 6) {
+          const phase = (((ts - start) / 1400) + i * 0.3) % 1;
+          ctx.strokeStyle = recent ? `rgba(255,122,77,${(1 - phase) * 0.6})` : `rgba(94,225,255,${(1 - phase) * 0.6})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(px, py, 2 + phase * 14, 0, Math.PI * 2); ctx.stroke();
+        }
+        // label the newest few, near-side
+        if (i < 4) {
+          ctx.fillStyle = "rgba(220,224,235,0.85)";
+          ctx.font = "10px ui-monospace, monospace";
+          ctx.fillText(`$${Math.round(p.amount)} ${p.cc}`, px + 8, py + 3);
+        }
+      });
+    }
+    rot += 0.14;
+    monGlobeRAF = requestAnimationFrame(frame);
+  }
+  monGlobeRAF = requestAnimationFrame(frame);
+}
+
+function renderGlobeCell(revenue) {
+  const empty = !revenue.configured
+    ? '<div class="mon-empty" style="position:absolute;top:6px;left:0;">Dodo Payments not connected — no live revenue to map.</div>'
+    : "";
+  return `<div class="mon-globe-wrap">${empty}<canvas id="mon-globe"></canvas></div>`;
+}
+
+// --- Revenue-over-time stacked bar chart ------------------------------------
+
+function monBucket(d) {
+  const y = d.getFullYear();
+  if (monState.granularity === "daily") {
+    const m = d.getMonth() + 1;
+    return { key: `${y}-${m}-${d.getDate()}`, sort: d.getTime(), label: `${m}/${d.getDate()}` };
+  }
+  if (monState.granularity === "weekly") {
+    const jan1 = new Date(y, 0, 1);
+    const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    return { key: `${y}-W${week}`, sort: y * 100 + week, label: `${y} W${week}` };
+  }
+  if (monState.granularity === "yearly") {
+    return { key: `${y}`, sort: y, label: `${y}` };
+  }
+  const m = d.getMonth();
+  return { key: `${y}-${m}`, sort: y * 12 + m, label: `${MON_MONTHS[m]} '${String(y).slice(2)}` };
+}
+
+function renderRevenueChart(revenue, categories) {
+  if (!revenue.configured) return '<div class="mon-chart-wrap"><div class="mon-empty">Dodo Payments not connected.</div></div>';
+  if (revenue.error) return '<div class="mon-chart-wrap"><div class="mon-empty">Dodo Payments error.</div></div>';
+  const fp = monFilterPayments(revenue.payments, { byCategory: false });
+  if (!fp.length) return '<div class="mon-chart-wrap"><div class="mon-empty">No revenue in this range.</div></div>';
+
+  const buckets = new Map();
+  for (const p of fp) {
+    const b = monBucket(new Date(p.created_at));
+    const cat = monProduct(p);
+    const row = buckets.get(b.key) || { label: b.label, sort: b.sort, byCat: {} };
+    row.byCat[cat] = (row.byCat[cat] || 0) + (p.amount_usd || 0);
+    buckets.set(b.key, row);
+  }
+  const rows = [...buckets.values()].sort((a, b) => a.sort - b.sort);
+  const cats = categories.length ? categories : ["Other"];
+  const maxTotal = Math.max(...rows.map((r) => Object.values(r.byCat).reduce((s, v) => s + v, 0)), 1);
+
+  const W = Math.max(rows.length * 8, 240), H = 200, padB = 6, padT = 6, padL = 2;
+  const bw = (W - padL) / rows.length;
+  const barW = Math.min(bw * 0.82, 16);
+  let bars = "";
+  rows.forEach((r, i) => {
+    let y = H - padB;
+    const x = padL + i * bw + (bw - barW) / 2;
+    for (const cat of cats) {
+      const v = r.byCat[cat];
+      if (!v) continue;
+      const h = (v / maxTotal) * (H - padB - padT);
+      y -= h;
+      bars += `<rect class="mon-chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" style="fill:${monTagColor(cat)}"><title>${escapeHtml(cat)} ${fmtMoney(v)} — ${escapeHtml(r.label)}</title></rect>`;
+    }
+  });
+
+  const usedCats = cats.filter((c) => rows.some((r) => r.byCat[c]));
+  const legend = usedCats
+    .map((c) => `<span class="mon-legend-item"><span class="mon-legend-swatch" style="background:${monTagColor(c)}"></span>${escapeHtml(c)}</span>`)
+    .join("");
+  const axis = rows.length
+    ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--mon-muted);margin-top:4px;"><span>${escapeHtml(rows[0].label)}</span><span>${escapeHtml(rows[rows.length - 1].label)}</span></div>`
+    : "";
+
+  return `
+    <div class="mon-chart-wrap">
+      <div class="mon-legend">${legend}</div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars}</svg>
+      ${axis}
+    </div>`;
+}
+
+// --- Scrolling sales ticker + status bar ------------------------------------
+
+function renderMonTicker(revenue) {
+  if (!revenue.configured) return "";
+  const fp = monFilterPayments(revenue.payments).slice(0, 30);
+  if (!fp.length) return "";
+  const item = (p) =>
+    `<span class="mon-ticker-item">${countryFlag(p.country)} <span>${escapeHtml((monProduct(p) || "Sale").slice(0, 20))}</span> <span class="amt">${monMoney(p.amount_usd)}</span> <span class="ago">${timeAgo(p.created_at)}</span></span>`;
+  const one = fp.map(item).join("");
+  return `<div class="mon-ticker"><div class="mon-ticker-track">${one}${one}</div></div>`;
+}
+
+function renderMonStatusBar(revenue, analytics, shipping, stats) {
+  const problems = [];
+  if (!revenue.configured) problems.push("Dodo Payments not connected");
+  else if (revenue.error) problems.push("Dodo Payments error");
+  if (!analytics.configured) problems.push("Vercel Analytics not connected");
+  if (!shipping.configured) problems.push("No GitHub account/repo tracked");
+  if (problems.length) return `<div class="mon-statusbar warn">⚠ ${problems.map(escapeHtml).join("  ·  ")}</div>`;
+  const visitors = (analytics.projects || []).reduce((s, p) => s + (p.pageviews || 0), 0);
+  return `<div class="mon-statusbar ok">● ALL SYSTEMS OPERATIONAL · ${stats.count || 0} payments · ${visitors.toLocaleString()} visitors (30d)</div>`;
+}
+
+function monPersistRerender(panel) {
+  monSaveState();
+  renderMonitor(panel);
+}
+
+function wireMonitorTopbar(panel) {
+  panel.querySelectorAll("[data-set]").forEach((b) => {
+    b.addEventListener("click", () => { monState[b.dataset.set] = b.dataset.val; monPersistRerender(panel); });
+  });
+  panel.querySelectorAll("[data-toggle]").forEach((b) => {
+    b.addEventListener("click", () => { monState[b.dataset.toggle] = !monState[b.dataset.toggle]; monPersistRerender(panel); });
+  });
+  panel.querySelectorAll("[data-cat]").forEach((b) => {
+    b.addEventListener("click", () => { monState.category = b.dataset.cat; monPersistRerender(panel); });
+  });
+  const save = panel.querySelector('[data-action="save"]');
+  if (save) save.addEventListener("click", () => { monSaveState(); save.textContent = "Saved"; setTimeout(() => { save.textContent = "Save"; }, 1000); });
+  const reset = panel.querySelector('[data-action="reset"]');
+  if (reset) reset.addEventListener("click", () => { monState = monDefaultState(); monSaveState(); renderMonitor(panel); });
 }
 
 // analytics.projects is one entry per tracked Vercel project (see
@@ -1268,6 +1680,7 @@ function renderSocialSummary(social) {
 }
 
 function wireMonitorActions(panel) {
+  wireMonitorTopbar(panel);
   document.getElementById("monitor-vercel-add").addEventListener("click", async () => {
     const idEl = document.getElementById("monitor-vercel-input");
     const labelEl = document.getElementById("monitor-vercel-label");

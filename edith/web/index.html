@@ -414,6 +414,87 @@
   .mon-btn:hover { border-color: var(--mon-accent); color: var(--mon-accent); }
   .mon-btn:disabled { opacity: 0.5; cursor: default; }
   .mon-refresh { background: none; border: none; color: var(--mon-accent); font-family: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; padding: 0; }
+
+  /* --- Situation-monitor board: the dense edge-to-edge levelsio-style grid.
+     A hairline separator look is achieved with a 1px grid gap over a border-
+     colored board background, each cell painted the near-black page bg. --- */
+  #monitor-panel { max-width: none; padding: 0; }
+  .mon-topbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--mon-border); flex-wrap: wrap; }
+  .mon-brand { font-size: 15px; font-weight: 700; letter-spacing: 0.18em; color: var(--mon-text); white-space: nowrap; }
+  .mon-filters { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .mon-fgroup { display: inline-flex; border: 1px solid var(--mon-border); border-radius: 5px; overflow: hidden; }
+  .mon-fbtn { background: none; border: none; color: var(--mon-muted); font-family: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer; letter-spacing: 0.03em; }
+  .mon-fgroup .mon-fbtn + .mon-fbtn { border-left: 1px solid var(--mon-border); }
+  .mon-fbtn:hover { color: var(--mon-text); }
+  .mon-fbtn.active { background: var(--mon-text); color: var(--mon-bg); font-weight: 700; }
+  .mon-fbtn.toggle.active { background: var(--mon-accent); color: var(--mon-bg); }
+
+  .mon-tabs { display: flex; align-items: stretch; overflow-x: auto; border-bottom: 1px solid var(--mon-border); scrollbar-width: none; }
+  .mon-tabs::-webkit-scrollbar { display: none; }
+  .mon-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--mon-muted); font-family: inherit; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 9px 16px; cursor: pointer; white-space: nowrap; }
+  .mon-tab:hover { color: var(--mon-text); }
+  .mon-tab.active { color: var(--mon-text); }
+
+  .mon-board { display: grid; grid-template-columns: 1.15fr 1.12fr 0.92fr; grid-template-areas: "globe ship ideas" "chart media stats"; gap: 1px; background: var(--mon-border); }
+  .mon-cell { background: var(--mon-bg); padding: 12px 14px 14px; min-width: 0; display: flex; flex-direction: column; }
+  .mon-cell.area-globe { grid-area: globe; }
+  .mon-cell.area-ship  { grid-area: ship; }
+  .mon-cell.area-ideas { grid-area: ideas; }
+  .mon-cell.area-chart { grid-area: chart; }
+  .mon-cell.area-media { grid-area: media; }
+  .mon-cell.area-stats { grid-area: stats; }
+  .mon-cell-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .mon-cell-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mon-header); }
+  .mon-scroll { overflow-y: auto; scrollbar-width: thin; }
+  .area-ship .mon-scroll, .area-ideas .mon-scroll { max-height: 300px; }
+  .area-media .mon-scroll { max-height: 300px; }
+
+  .mon-live { display: inline-flex; align-items: center; gap: 5px; color: var(--mon-danger); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; }
+  .mon-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mon-danger); animation: mon-pulse 1.4s ease-in-out infinite; }
+  @keyframes mon-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .mon-globe-wrap { position: relative; flex: 1; min-height: 300px; }
+  .mon-globe-wrap canvas { width: 100%; height: 100%; display: block; }
+
+  .mon-chart-wrap { flex: 1; min-height: 220px; display: flex; flex-direction: column; }
+  .mon-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
+  .mon-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--mon-muted); }
+  .mon-legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+  .mon-chart-wrap svg { width: 100%; flex: 1; min-height: 180px; }
+  .mon-chart-bar:hover { opacity: 0.75; }
+
+  /* Big revenue stat tiles (GROSS REVENUE / MRR / LAST PAYMENT / NET REVENUE) */
+  .mon-bigstats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--mon-border); border: 1px solid var(--mon-border); border-radius: 6px; overflow: hidden; }
+  .mon-bigstat { background: var(--mon-bg); padding: 12px 13px; min-height: 84px; }
+  .mon-bigstat-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--mon-header); margin-bottom: 8px; }
+  .mon-bigstat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1.1; word-break: break-all; }
+  .mon-bigstat-value.is-empty { color: var(--mon-muted); font-size: 16px; }
+  .mon-bigstat-note { font-size: 10.5px; color: var(--mon-muted); margin-top: 6px; }
+  .mon-anon { filter: none; }
+  .mon-redact { color: var(--mon-muted); letter-spacing: 0.05em; }
+
+  /* Status / DOWN bar + scrolling sales ticker */
+  .mon-statusbar { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 11px; letter-spacing: 0.04em; border-top: 1px solid var(--mon-border); }
+  .mon-statusbar.ok { background: rgba(127, 217, 166, 0.08); color: #7fd9a6; }
+  .mon-statusbar.warn { background: rgba(255, 92, 92, 0.1); color: #ff8a8a; }
+  .mon-ticker { overflow: hidden; white-space: nowrap; border-top: 1px solid var(--mon-border); background: #050506; padding: 7px 0; }
+  .mon-ticker-track { display: inline-block; white-space: nowrap; will-change: transform; animation: mon-marquee 60s linear infinite; }
+  .mon-ticker:hover .mon-ticker-track { animation-play-state: paused; }
+  .mon-ticker-item { display: inline-flex; align-items: center; gap: 6px; padding: 0 22px; font-size: 12px; color: var(--mon-text); border-right: 1px solid var(--mon-border); }
+  .mon-ticker-item .amt { font-weight: 700; }
+  .mon-ticker-item .ago { color: var(--mon-muted); font-size: 11px; }
+  @keyframes mon-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  .mon-inline-form { margin-top: 8px; }
+  .mon-inline-form summary { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--mon-muted); cursor: pointer; padding: 4px 0; list-style: none; }
+  .mon-inline-form summary::-webkit-details-marker { display: none; }
+  .mon-inline-form summary:hover { color: var(--mon-accent); }
+  .mon-inline-form[open] summary { color: var(--mon-text); }
+
+  @media (max-width: 1000px) {
+    .mon-board { grid-template-columns: 1fr; grid-template-areas: "globe" "chart" "ship" "media" "ideas" "stats"; }
+    .area-ship .mon-scroll, .area-ideas .mon-scroll, .area-media .mon-scroll { max-height: none; }
+  }
 </style>
 </head>
 <body>
