@@ -11,6 +11,7 @@ from edith.memory import ideas_bugs_store, store
 from edith.tools.registry import ToolRegistry
 
 SHIPPING_REPO_CATEGORY = "shipping_repo"
+SHIPPING_ACCOUNT_CATEGORY = "shipping_account"
 VERCEL_PROJECT_CATEGORY = "vercel_project"
 
 
@@ -52,6 +53,20 @@ def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
         if not facts:
             return "No repos are being tracked in the shipping log yet."
         return "\n".join(f"{f['key']} ({f['value']})" for f in facts)
+
+    def track_shipping_account(username: str, label: str = "") -> str:
+        store.save_fact(conn, key=username, value=label or username, category=SHIPPING_ACCOUNT_CATEGORY)
+        return f"Now tracking all of {username}'s public GitHub activity in the Shipping Log — every commit tagged with its repo automatically."
+
+    def untrack_shipping_account(username: str) -> str:
+        removed = store.forget_fact(conn, username)
+        return f"Stopped tracking {username}." if removed else f"{username} wasn't being tracked."
+
+    def list_shipping_accounts() -> str:
+        facts = store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY)
+        if not facts:
+            return "No GitHub accounts are being tracked in the shipping log yet."
+        return "\n".join(f["key"] for f in facts)
 
     def track_vercel_project(project_id: str, label: str = "") -> str:
         store.save_fact(conn, key=project_id, value=label or project_id, category=VERCEL_PROJECT_CATEGORY)
@@ -195,6 +210,58 @@ def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
             },
         },
         list_shipping_repos,
+    )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "track_shipping_account",
+                "description": (
+                    "Track an entire GitHub account/username in the Shipping Log panel — pulls recent public "
+                    "commits across ALL of that user's repos automatically, each one tagged with the repo it "
+                    "came from. Use this instead of track_shipping_repo when the user wants everything they "
+                    "ship tracked without naming each repo individually (e.g. 'track my GitHub, techwarq')."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "username": {"type": "string", "description": "GitHub username, e.g. 'techwarq'"},
+                        "label": {"type": "string", "description": "Optional display name, defaults to the username"},
+                    },
+                    "required": ["username"],
+                },
+            },
+        },
+        track_shipping_account,
+    )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "untrack_shipping_account",
+                "description": "Stop tracking a GitHub account's activity in the Shipping Log panel.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"username": {"type": "string"}},
+                    "required": ["username"],
+                },
+            },
+        },
+        untrack_shipping_account,
+    )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "list_shipping_accounts",
+                "description": "List every GitHub account currently tracked in the Shipping Log panel.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        list_shipping_accounts,
     )
 
     registry.register(

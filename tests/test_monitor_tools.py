@@ -61,6 +61,23 @@ def test_untrack_unknown_repo(registry):
     assert "wasn't being tracked" in result
 
 
+def test_track_list_untrack_shipping_account(registry):
+    result = registry.dispatch("track_shipping_account", {"username": "techwarq"})
+    assert "techwarq" in result
+
+    listed = registry.dispatch("list_shipping_accounts", {})
+    assert listed == "techwarq"
+
+    untracked = registry.dispatch("untrack_shipping_account", {"username": "techwarq"})
+    assert "Stopped tracking" in untracked
+    assert registry.dispatch("list_shipping_accounts", {}) == "No GitHub accounts are being tracked in the shipping log yet."
+
+
+def test_untrack_unknown_shipping_account(registry):
+    result = registry.dispatch("untrack_shipping_account", {"username": "never"})
+    assert "wasn't being tracked" in result
+
+
 def test_track_list_untrack_vercel_project(registry):
     result = registry.dispatch("track_vercel_project", {"project_id": "prj_abc", "label": "Snips"})
     assert "Snips" in result

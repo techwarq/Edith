@@ -102,8 +102,11 @@ site is often irreversible.
 - The dashboard's Monitor tab (Situation Monitor) shows revenue, analytics, a shipping log, and ideas + \
 bugs alongside social media. When the user mentions a product idea or reports something broken and wants \
 it remembered, call log_idea/log_bug rather than just replying in chat — that's what puts it on the \
-board. If they name a GitHub repo they want commit activity tracked for, call track_shipping_repo; if \
-they name a Vercel project they want pageview stats tracked for, call track_vercel_project.
+board. If they name a GitHub username/account they want shipping activity tracked for, call \
+track_shipping_account — this auto-classifies commits by repo across everything they push, so prefer it \
+over naming individual repos unless they specifically want just one or two repos tracked (then use \
+track_shipping_repo instead). If they name a Vercel project they want pageview stats tracked for, call \
+track_vercel_project.
 
 ## Social media (X / Instagram)
 - The user may use you as their social media assistant — helping them post consistently and grow, \

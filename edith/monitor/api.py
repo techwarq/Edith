@@ -20,7 +20,7 @@ from google import genai
 from edith.config import Settings
 from edith.memory import ideas_bugs_store, store
 from edith.monitor import dodo, github_shipping, vercel_analytics
-from edith.tools.monitor import SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
+from edith.tools.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
 from edith.tools.news import fetch_news
 from edith.tools.social import SOCIAL_SKILL_CATEGORY
 
@@ -97,15 +97,25 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         facts = store.get_facts_by_category(conn, SHIPPING_REPO_CATEGORY)
         return [{"repo": f["key"], "label": f["value"]} for f in facts]
 
+    def _list_shipping_accounts() -> list[dict]:
+        facts = store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY)
+        return [{"username": f["key"], "label": f["value"]} for f in facts]
+
     @router.get("/shipping", response_model=None)
     async def shipping(token: str = "") -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        repos = await asyncio.to_thread(_list_shipping_repos)
-        if not repos:
-            return JSONResponse({"configured": False, "repos": []})
-        commits = await asyncio.to_thread(github_shipping.get_recent_commits, repos, settings.github_token)
-        return JSONResponse({"configured": True, "repos": repos, "commits": commits})
+        repos, accounts = await asyncio.gather(asyncio.to_thread(_list_shipping_repos), asyncio.to_thread(_list_shipping_accounts))
+        if not repos and not accounts:
+            return JSONResponse({"configured": False, "repos": [], "accounts": []})
+
+        commit_lists = await asyncio.gather(
+            asyncio.to_thread(github_shipping.get_recent_commits, repos, settings.github_token),
+            *(asyncio.to_thread(github_shipping.get_account_activity, a["username"], settings.github_token) for a in accounts),
+        )
+        commits = [c for batch in commit_lists for c in batch]
+        commits.sort(key=lambda c: c.get("date") or "", reverse=True)
+        return JSONResponse({"configured": True, "repos": repos, "accounts": accounts, "commits": commits})
 
     @router.post("/shipping/repos", response_model=None)
     async def add_shipping_repo(request: Request) -> JSONResponse:
@@ -132,6 +142,33 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         if not repo:
             return JSONResponse({"error": "repo is required"}, status_code=400)
         ok = await asyncio.to_thread(store.forget_fact, conn, repo)
+        return JSONResponse({"ok": ok})
+
+    @router.post("/shipping/accounts", response_model=None)
+    async def add_shipping_account(request: Request) -> JSONResponse:
+        body = await request.json()
+        if (err := _check_token(body.get("token", ""))) is not None:
+            return err
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JSONResponse({"error": "username is required"}, status_code=400)
+        label = (body.get("label") or "").strip() or username
+
+        def _save() -> None:
+            store.save_fact(conn, key=username, value=label, category=SHIPPING_ACCOUNT_CATEGORY)
+
+        await asyncio.to_thread(_save)
+        return JSONResponse({"username": username, "label": label})
+
+    @router.post("/shipping/accounts/delete", response_model=None)
+    async def delete_shipping_account(request: Request) -> JSONResponse:
+        body = await request.json()
+        if (err := _check_token(body.get("token", ""))) is not None:
+            return err
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JSONResponse({"error": "username is required"}, status_code=400)
+        ok = await asyncio.to_thread(store.forget_fact, conn, username)
         return JSONResponse({"ok": ok})
 
     @router.get("/news", response_model=None)

@@ -1078,6 +1078,7 @@ function renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs) {
       <div class="mon-panel">
         <div class="mon-section-title">Shipping log</div>
         <div id="monitor-shipping">${renderShippingLog(shipping)}</div>
+        ${renderShippingAccountForm(shipping.accounts || [])}
         ${renderShippingRepoForm(shipping.repos || [])}
       </div>
 
@@ -1161,10 +1162,10 @@ function renderVercelProjectForm(projects) {
 
 function renderShippingLog(shipping) {
   if (!shipping.configured) {
-    return '<div class="mon-empty">No repos tracked yet — add one below to see recent commits.</div>';
+    return '<div class="mon-empty">Nothing tracked yet — track a GitHub account below for automatic commits across all its repos, or add individual repos.</div>';
   }
   if (!shipping.commits || !shipping.commits.length) {
-    return '<div class="mon-empty">No recent commits found for the tracked repo(s).</div>';
+    return '<div class="mon-empty">No recent commits found for what\'s tracked.</div>';
   }
   return shipping.commits
     .map(
@@ -1178,6 +1179,23 @@ function renderShippingLog(shipping) {
     .join("");
 }
 
+// Tracking a whole GitHub account (track_shipping_account) auto-classifies
+// every commit by repo with zero per-repo setup — the primary way to use
+// this panel. Tracking individual repos (below) is for when only specific
+// repos matter, not everything a user ships.
+function renderShippingAccountForm(accounts) {
+  const chips = accounts
+    .map((a) => `<span class="mon-chip">${monTag(a.label)}<button data-remove-account="${escapeHtml(a.username)}" title="Stop tracking">×</button></span>`)
+    .join("");
+  return `
+    ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
+    <div class="mon-form">
+      <input id="monitor-account-input" type="text" placeholder="GitHub username (e.g. techwarq)">
+      <button class="mon-btn" id="monitor-account-add">Track account</button>
+    </div>
+  `;
+}
+
 function renderShippingRepoForm(repos) {
   const chips = repos
     .map((r) => `<span class="mon-chip">${monTag(r.label)}<button data-remove-repo="${escapeHtml(r.repo)}" title="Stop tracking">×</button></span>`)
@@ -1185,7 +1203,7 @@ function renderShippingRepoForm(repos) {
   return `
     ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
     <div class="mon-form">
-      <input id="monitor-repo-input" type="text" placeholder="owner/name (GitHub repo)">
+      <input id="monitor-repo-input" type="text" placeholder="owner/name (single repo, optional)">
       <input id="monitor-repo-label" type="text" placeholder="Label (optional)">
       <button class="mon-btn" id="monitor-repo-add">Track</button>
     </div>
@@ -1270,6 +1288,29 @@ function wireMonitorActions(panel) {
         loadMonitor();
       } catch (err) {
         alert("Failed to untrack project: " + err.message);
+      }
+    });
+  });
+
+  document.getElementById("monitor-account-add").addEventListener("click", async () => {
+    const usernameEl = document.getElementById("monitor-account-input");
+    const username = usernameEl.value.trim();
+    if (!username) return;
+    try {
+      await apiPost("/api/monitor/shipping/accounts", { username });
+      loadMonitor();
+    } catch (err) {
+      alert("Failed to track account: " + err.message);
+    }
+  });
+
+  panel.querySelectorAll("[data-remove-account]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost("/api/monitor/shipping/accounts/delete", { username: btn.dataset.removeAccount });
+        loadMonitor();
+      } catch (err) {
+        alert("Failed to untrack account: " + err.message);
       }
     });
   });

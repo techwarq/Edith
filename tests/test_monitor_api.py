@@ -4,8 +4,8 @@ from fastapi.testclient import TestClient
 from edith.config import Settings
 from edith.memory import db, ideas_bugs_store, store
 from edith.monitor import api as monitor_api
-from edith.monitor import dodo, vercel_analytics
-from edith.tools.monitor import SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
+from edith.monitor import dodo, github_shipping, vercel_analytics
+from edith.tools.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
 from edith.tools.social import SOCIAL_SKILL_CATEGORY
 
 TOKEN = "test-token"
@@ -146,10 +146,10 @@ def test_analytics_projects_add_and_delete(tmp_path):
     assert store.get_facts_by_category(conn, VERCEL_PROJECT_CATEGORY) == []
 
 
-def test_shipping_not_configured_when_no_repos_tracked(tmp_path):
+def test_shipping_not_configured_when_nothing_tracked(tmp_path):
     client, _ = _client(tmp_path)
     resp = client.get("/api/monitor/shipping", params={"token": TOKEN})
-    assert resp.json() == {"configured": False, "repos": []}
+    assert resp.json() == {"configured": False, "repos": [], "accounts": []}
 
 
 def test_shipping_repos_add_and_delete(tmp_path):
@@ -163,6 +163,41 @@ def test_shipping_repos_add_and_delete(tmp_path):
     del_resp = client.post("/api/monitor/shipping/repos/delete", json={"token": TOKEN, "repo": "techwarq/edith"})
     assert del_resp.json() == {"ok": True}
     assert store.get_facts_by_category(conn, SHIPPING_REPO_CATEGORY) == []
+
+
+def test_shipping_accounts_add_and_delete(tmp_path):
+    client, conn = _client(tmp_path)
+    add_resp = client.post("/api/monitor/shipping/accounts", json={"token": TOKEN, "username": "techwarq"})
+    assert add_resp.status_code == 200
+    assert store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY) == [
+        {"key": "techwarq", "value": "techwarq", "category": SHIPPING_ACCOUNT_CATEGORY}
+    ]
+
+    del_resp = client.post("/api/monitor/shipping/accounts/delete", json={"token": TOKEN, "username": "techwarq"})
+    assert del_resp.json() == {"ok": True}
+    assert store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY) == []
+
+
+def test_shipping_combines_repo_and_account_commits(tmp_path, monkeypatch):
+    client, conn = _client(tmp_path)
+    store.save_fact(conn, key="techwarq/edith", value="Edith", category=SHIPPING_REPO_CATEGORY)
+    store.save_fact(conn, key="techwarq", value="techwarq", category=SHIPPING_ACCOUNT_CATEGORY)
+
+    monkeypatch.setattr(
+        github_shipping,
+        "get_recent_commits",
+        lambda repos, token: [{"repo": "techwarq/edith", "label": "Edith", "sha": "1111111", "message": "repo commit", "date": "2026-07-01T00:00:00Z"}],
+    )
+    monkeypatch.setattr(
+        github_shipping,
+        "get_account_activity",
+        lambda username, token: [{"repo": "techwarq/other", "label": "other", "sha": "2222222", "message": "account commit", "date": "2026-07-02T00:00:00Z"}],
+    )
+
+    resp = client.get("/api/monitor/shipping", params={"token": TOKEN})
+    body = resp.json()
+    assert body["configured"] is True
+    assert [c["message"] for c in body["commits"]] == ["account commit", "repo commit"]  # newest first
 
 
 def test_social_summary(tmp_path):
