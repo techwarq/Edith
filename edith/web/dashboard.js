@@ -1004,6 +1004,8 @@ function wireMcpCardActions(panel) {
 
 // --- Monitor ("Situation Monitor" tab) --------------------------------------
 //
+// Deliberately its own dense, dark, monospace visual world (see the `.mon-*`
+// classes/tokens in index.html) — not Edith's rounded light/dark app theme.
 // Revenue (Dodo Payments), analytics (Vercel), and shipping log (GitHub) each
 // call a live external API on the backend on every load — no local caching —
 // and each independently reports {configured:false} rather than erroring
@@ -1016,17 +1018,35 @@ function fmtMoney(value) {
   return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function statTile(value, label, extra) {
-  return `<div class="stat-tile"><div class="stat-value">${value}</div><div class="stat-label">${label}</div>${extra || ""}</div>`;
+function monTile(value, label, note) {
+  return `<div class="mon-tile"><div class="mon-tile-value">${value}</div><div class="mon-tile-label">${label}</div>${note ? `<div class="mon-tile-note">${note}</div>` : ""}</div>`;
 }
 
-function statTileEmpty(label, note) {
-  return `<div class="stat-tile"><div class="stat-value" style="font-size:13px;color:var(--muted)">—</div><div class="stat-label">${label}</div><div class="stat-delta is-flat">${escapeHtml(note)}</div></div>`;
+function monTileEmpty(label, note) {
+  return `<div class="mon-tile"><div class="mon-tile-value is-empty">—</div><div class="mon-tile-label">${label}</div><div class="mon-tile-note">${escapeHtml(note)}</div></div>`;
+}
+
+function monTileError(label, note) {
+  return `<div class="mon-tile"><div class="mon-tile-value is-empty">—</div><div class="mon-tile-label">${escapeHtml(label)}</div><div class="mon-tile-note is-error">${escapeHtml(note)}</div></div>`;
+}
+
+// Deterministic color per project/repo label (same tag colors every reload)
+// — six-color palette from the `.mon-tag-N` CSS custom properties, cycled by
+// a stable hash of the label so it doesn't depend on insertion order.
+const MON_TAG_COUNT = 6;
+function monTagColor(label) {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  return `var(--mon-tag-${hash % MON_TAG_COUNT})`;
+}
+
+function monTag(label) {
+  return `<span class="mon-tag" style="color:${monTagColor(label)}">${escapeHtml(label)}</span>`;
 }
 
 async function loadMonitor() {
   const panel = document.getElementById("monitor-panel");
-  panel.innerHTML = '<div class="empty-state">Loading…</div>';
+  panel.innerHTML = '<div class="mon-empty">Loading…</div>';
   try {
     const [revenue, analytics, shipping, social, ideasBugs] = await Promise.all([
       apiGet("/api/monitor/revenue"),
@@ -1037,43 +1057,49 @@ async function loadMonitor() {
     ]);
     renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs.items);
   } catch (err) {
-    panel.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+    panel.innerHTML = `<div class="mon-empty">Failed to load: ${escapeHtml(err.message)}</div>`;
   }
 }
 
 function renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs) {
   panel.innerHTML = `
-    <h3>Revenue</h3>
-    <div class="stat-row">${renderRevenueStats(revenue)}</div>
+    <div class="mon-row">
+      <div class="mon-section-title">Revenue</div>
+      <div class="mon-stat-row">${renderRevenueStats(revenue)}</div>
+    </div>
 
-    <div class="card-grid" style="margin-top: 18px;">
-      <div>
-        <div class="panel-header"><h3>Analytics</h3></div>
-        <div class="stat-row" id="monitor-analytics">${renderAnalyticsStats(analytics)}</div>
+    <div class="mon-row mon-grid">
+      <div class="mon-panel">
+        <div class="mon-section-title">Analytics</div>
+        <div class="mon-stat-row" id="monitor-analytics">${renderAnalyticsStats(analytics)}</div>
         ${renderVercelProjectForm(analytics.projects || [])}
       </div>
 
-      <div>
-        <div class="panel-header"><h3>Shipping log</h3></div>
+      <div class="mon-panel">
+        <div class="mon-section-title">Shipping log</div>
         <div id="monitor-shipping">${renderShippingLog(shipping)}</div>
         ${renderShippingRepoForm(shipping.repos || [])}
       </div>
 
-      <div>
-        <div class="panel-header"><h3>Ideas + bugs</h3></div>
+      <div class="mon-panel">
+        <div class="mon-section-title">Ideas + bugs</div>
         ${renderIdeaBugForm()}
         <div id="monitor-ideas-bugs">${renderIdeasBugs(ideasBugs)}</div>
       </div>
+    </div>
 
-      <div>
-        <div class="panel-header"><h3>Live news</h3><button class="refresh-btn" id="monitor-news-refresh">Refresh</button></div>
-        <input id="monitor-news-topic" type="text" placeholder="Topic (optional)"
-          style="width:100%;padding:10px 14px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;margin-bottom:10px;">
-        <div id="monitor-news"><div class="empty-state">Click Refresh to fetch the latest headlines.</div></div>
+    <div class="mon-row mon-grid">
+      <div class="mon-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="mon-section-title" style="margin-bottom:0">Live news</div>
+          <button class="mon-refresh" id="monitor-news-refresh">Refresh</button>
+        </div>
+        <div class="mon-form"><input id="monitor-news-topic" type="text" placeholder="Topic (optional)"></div>
+        <div id="monitor-news" style="margin-top:8px;"><div class="mon-empty">Click Refresh to fetch the latest headlines.</div></div>
       </div>
 
-      <div>
-        <div class="panel-header"><h3>Social media</h3></div>
+      <div class="mon-panel">
+        <div class="mon-section-title">Social media</div>
         <div id="monitor-social">${renderSocialSummary(social)}</div>
       </div>
     </div>
@@ -1085,18 +1111,16 @@ function renderMonitor(panel, revenue, analytics, shipping, social, ideasBugs) {
 function renderRevenueStats(revenue) {
   const tiles = [];
   if (!revenue.configured) {
-    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(statTileEmpty(label, "Dodo Payments not connected")));
+    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(monTileEmpty(label, "Dodo Payments not connected")));
   } else if (revenue.error) {
-    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(statTileEmpty(label, "Dodo Payments error")));
+    ["Gross revenue", "MRR", "Net revenue", "Last payment"].forEach((label) => tiles.push(monTileError(label, "Dodo Payments error")));
   } else {
-    tiles.push(statTile(fmtMoney(revenue.gross_revenue_usd), "Gross revenue"));
-    tiles.push(statTile(fmtMoney(revenue.mrr_usd), "MRR"));
-    tiles.push(statTile(fmtMoney(revenue.net_revenue_usd), "Net revenue"));
+    tiles.push(monTile(fmtMoney(revenue.gross_revenue_usd), "Gross revenue"));
+    tiles.push(monTile(fmtMoney(revenue.mrr_usd), "MRR"));
+    tiles.push(monTile(fmtMoney(revenue.net_revenue_usd), "Net revenue"));
     const lp = revenue.last_payment;
-    const lpExtra = lp
-      ? `<div class="stat-delta is-flat">${lp.customer_name ? escapeHtml(lp.customer_name) + " · " : ""}${timeAgo(lp.created_at)}</div>`
-      : "";
-    tiles.push(statTile(lp ? fmtMoney(lp.amount_usd) : "—", "Last payment", lpExtra));
+    const lpNote = lp ? `${lp.customer_name ? escapeHtml(lp.customer_name) + " · " : ""}${timeAgo(lp.created_at)}` : "";
+    tiles.push(monTile(lp ? fmtMoney(lp.amount_usd) : "—", "Last payment", lpNote));
   }
   return tiles.join("");
 }
@@ -1107,48 +1131,48 @@ function renderRevenueStats(revenue) {
 // account) this renders a variable-length stat row.
 function renderAnalyticsStats(analytics) {
   if (!analytics.configured) {
-    return statTileEmpty("Pageviews (30d)", "No Vercel projects tracked yet");
+    return monTileEmpty("Pageviews (30d)", "No Vercel projects tracked yet");
   }
   if (!analytics.projects.length) {
-    return statTileEmpty("Pageviews (30d)", "Vercel Analytics not connected");
+    return monTileEmpty("Pageviews (30d)", "Vercel Analytics not connected");
   }
   return analytics.projects
     .map((p) =>
       p.error
-        ? statTileEmpty(escapeHtml(p.label), "Vercel error")
-        : statTile(p.pageviews.toLocaleString(), `${escapeHtml(p.label)} · ${p.days}d`)
+        ? monTileError(p.label, "Vercel error")
+        : monTile(p.pageviews.toLocaleString(), `${escapeHtml(p.label)} · ${p.days}d`)
     )
     .join("");
 }
 
 function renderVercelProjectForm(projects) {
   const chips = projects
-    .map((p) => `<span class="repo-chip">${escapeHtml(p.label)}<button data-remove-vercel-project="${escapeHtml(p.project_id)}" title="Stop tracking">×</button></span>`)
+    .map((p) => `<span class="mon-chip">${monTag(p.label)}<button data-remove-vercel-project="${escapeHtml(p.project_id)}" title="Stop tracking">×</button></span>`)
     .join("");
   return `
     ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
-    <div class="new-goal-form" style="margin-top:8px;">
+    <div class="mon-form">
       <input id="monitor-vercel-input" type="text" placeholder="Vercel project ID (prj_...)">
       <input id="monitor-vercel-label" type="text" placeholder="Label (optional)">
-      <button id="monitor-vercel-add">Track</button>
+      <button class="mon-btn" id="monitor-vercel-add">Track</button>
     </div>
   `;
 }
 
 function renderShippingLog(shipping) {
   if (!shipping.configured) {
-    return '<div class="empty-state">No repos tracked yet — add one below to see recent commits.</div>';
+    return '<div class="mon-empty">No repos tracked yet — add one below to see recent commits.</div>';
   }
   if (!shipping.commits || !shipping.commits.length) {
-    return '<div class="empty-state">No recent commits found for the tracked repo(s).</div>';
+    return '<div class="mon-empty">No recent commits found for the tracked repo(s).</div>';
   }
   return shipping.commits
     .map(
       (c) => `
-    <div class="commit-row">
-      <span class="commit-sha">${escapeHtml(c.sha)}</span>
-      <span class="commit-msg" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</span>
-      <span class="commit-repo">${escapeHtml(c.label)} · ${timeAgo(c.date)}</span>
+    <div class="mon-list-row">
+      <span class="mon-mono-id">${escapeHtml(c.sha)}</span>
+      <span class="mon-main" title="${escapeHtml(c.message)}">${escapeHtml(c.message)}</span>
+      <span class="mon-side">${monTag(c.label)} · ${timeAgo(c.date)}</span>
     </div>`
     )
     .join("");
@@ -1156,48 +1180,47 @@ function renderShippingLog(shipping) {
 
 function renderShippingRepoForm(repos) {
   const chips = repos
-    .map((r) => `<span class="repo-chip">${escapeHtml(r.label)}<button data-remove-repo="${escapeHtml(r.repo)}" title="Stop tracking">×</button></span>`)
+    .map((r) => `<span class="mon-chip">${monTag(r.label)}<button data-remove-repo="${escapeHtml(r.repo)}" title="Stop tracking">×</button></span>`)
     .join("");
   return `
     ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
-    <div class="new-goal-form" style="margin-top:8px;">
+    <div class="mon-form">
       <input id="monitor-repo-input" type="text" placeholder="owner/name (GitHub repo)">
       <input id="monitor-repo-label" type="text" placeholder="Label (optional)">
-      <button id="monitor-repo-add">Track</button>
+      <button class="mon-btn" id="monitor-repo-add">Track</button>
     </div>
   `;
 }
 
 function renderIdeaBugForm() {
   return `
-    <div class="new-goal-form">
+    <div class="mon-form">
       <input id="monitor-ib-title" type="text" placeholder="Idea or bug title">
       <input id="monitor-ib-project" type="text" placeholder="Project (optional)">
-      <select id="monitor-ib-kind" style="padding:10px 14px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;">
+      <select id="monitor-ib-kind">
         <option value="idea">Idea</option>
         <option value="bug">Bug</option>
       </select>
-      <button id="monitor-ib-add">Add</button>
+      <button class="mon-btn" id="monitor-ib-add">Add</button>
     </div>
   `;
 }
 
 function renderIdeasBugs(items) {
-  if (!items.length) return '<div class="empty-state">Nothing logged yet — add one above, or tell Edith in chat.</div>';
+  if (!items.length) return '<div class="mon-empty">Nothing logged yet — add one above, or tell Edith in chat.</div>';
   return items.map(renderIdeaBugCard).join("");
 }
 
 function renderIdeaBugCard(item) {
   return `
-    <div class="idea-bug-card" data-item-id="${item.id}">
-      <div class="idea-bug-top">
-        <span class="kind-badge ${item.kind}">${item.kind}</span>
-        ${item.project ? `<span class="idea-bug-meta">${escapeHtml(item.project)}</span>` : ""}
+    <div class="mon-item-card" data-item-id="${item.id}">
+      <div class="mon-item-top">
+        <span class="mon-item-title"><span class="mon-badge ${item.kind}">${item.kind}</span> ${escapeHtml(item.title)}</span>
+        <span class="mon-item-meta">${timeAgo(item.created_at)}</span>
       </div>
-      <div class="idea-bug-title">${escapeHtml(item.title)}</div>
-      <div class="idea-bug-meta">${timeAgo(item.created_at)}</div>
-      ${item.note ? `<div class="idea-bug-note">${escapeHtml(item.note)}</div>` : ""}
-      <div class="idea-bug-actions">
+      ${item.project ? `<div style="margin-top:4px;">${monTag(item.project)}</div>` : ""}
+      ${item.note ? `<div class="mon-item-note">${escapeHtml(item.note)}</div>` : ""}
+      <div class="mon-item-actions">
         <button data-resolve-ib="${item.id}">Resolve</button>
         <button data-delete-ib="${item.id}">Delete</button>
       </div>
@@ -1206,23 +1229,24 @@ function renderIdeaBugCard(item) {
 
 function renderNews(text) {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return '<div class="empty-state">No headlines found.</div>';
-  return lines.map((l) => `<div class="news-item">${escapeHtml(l)}</div>`).join("");
+  if (!lines.length) return '<div class="mon-empty">No headlines found.</div>';
+  return lines.map((l) => `<div class="mon-news-item">${escapeHtml(l)}</div>`).join("");
 }
 
 function renderSocialSummary(social) {
   const strategy = social.content_strategy || [];
   const skills = social.skills || [];
   if (!strategy.length && !skills.length) {
-    return '<div class="empty-state">Nothing saved yet — use /skill-talk in chat to tell Edith about your content goals.</div>';
+    return '<div class="mon-empty">Nothing saved yet — use /skill-talk in chat to tell Edith about your content goals.</div>';
   }
+  const row = (title, meta) => `<div class="mon-list-row"><span class="mon-main">${escapeHtml(title)}</span><span class="mon-side" title="${escapeHtml(meta)}">${escapeHtml(meta.length > 40 ? meta.slice(0, 40) + "…" : meta)}</span></div>`;
   const strategyBlock = strategy.length
-    ? strategy.map((f) => `<div class="list-item"><div class="list-title">${escapeHtml(f.key)}</div><div class="list-meta">${escapeHtml(f.value)}</div></div>`).join("")
-    : '<div class="empty-state">No content strategy saved yet — use /skill-talk.</div>';
+    ? strategy.map((f) => row(f.key, f.value)).join("")
+    : '<div class="mon-empty">No content strategy saved yet — use /skill-talk.</div>';
   const skillsBlock = skills.length
-    ? skills.map((s) => `<div class="list-item"><div class="list-title">${escapeHtml(s.title)}</div><div class="list-meta">${escapeHtml(s.preview)}</div></div>`).join("")
-    : '<div class="empty-state">No skill files saved yet.</div>';
-  return `<h3 style="margin-top:0">Content strategy</h3>${strategyBlock}<h3>Skill files</h3>${skillsBlock}`;
+    ? skills.map((s) => row(s.title, s.preview)).join("")
+    : '<div class="mon-empty">No skill files saved yet.</div>';
+  return `<div class="mon-section-title" style="margin-top:0">Content strategy</div>${strategyBlock}<div class="mon-section-title" style="margin-top:16px">Skill files</div>${skillsBlock}`;
 }
 
 function wireMonitorActions(panel) {
@@ -1321,7 +1345,7 @@ function wireMonitorActions(panel) {
       const data = await apiGet("/api/monitor/news", { topic });
       newsEl.innerHTML = renderNews(data.text);
     } catch (err) {
-      newsEl.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+      newsEl.innerHTML = `<div class="mon-empty">Failed to load: ${escapeHtml(err.message)}</div>`;
     }
     btn.textContent = "Refresh";
     btn.disabled = false;

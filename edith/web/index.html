@@ -343,29 +343,77 @@
   .mcp-card-actions button { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 14px; font-size: 12px; cursor: pointer; }
   .subtle-note { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
 
-  /* --- Monitor tab --- */
-  .idea-bug-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 8px; }
-  .idea-bug-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-  .kind-badge { font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); padding: 3px 10px; white-space: nowrap; flex-shrink: 0; }
-  .kind-badge.idea { background: var(--surface-2); color: var(--text); }
-  .kind-badge.bug { background: var(--danger); color: #fff; }
-  .idea-bug-title { font-weight: 600; font-size: 14px; }
-  .idea-bug-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
-  .idea-bug-note { font-size: 12px; color: var(--text); opacity: 0.85; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); white-space: pre-wrap; }
-  .idea-bug-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .idea-bug-actions button { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 6px 14px; font-size: 12px; cursor: pointer; min-height: 30px; }
+  /* --- Monitor tab: a dense dark "situation monitor" — deliberately its own
+     visual world (always dark, monospace), independent of Edith's app-wide
+     light/dark rounded-card theme used everywhere else. --- */
+  #monitor-screen {
+    --mon-bg: #0a0a0b; --mon-surface: #131316; --mon-surface-2: #1a1a1e; --mon-border: #26262b;
+    --mon-text: #edeef0; --mon-muted: #6f6f78; --mon-header: #96969e;
+    --mon-accent: #5ee1ff; --mon-danger: #ff5c5c;
+    --mon-tag-0: #8ea9ff; --mon-tag-1: #ff9d6b; --mon-tag-2: #5ee1ff; --mon-tag-3: #c98bde; --mon-tag-4: #ffcf5c; --mon-tag-5: #7fd9a6;
+    background: var(--mon-bg);
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  #monitor-panel { color: var(--mon-text); max-width: 1400px; }
+  .mon-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--mon-header); font-weight: 700; margin: 0 0 10px; }
+  .mon-row + .mon-row { margin-top: 22px; }
+  .mon-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+  .mon-stat-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
-  .commit-row { display: flex; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
-  .commit-row:last-child { border-bottom: none; }
-  .commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); flex-shrink: 0; }
-  .commit-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .commit-repo { font-size: 11px; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+  .mon-tile { background: var(--mon-surface); border: 1px solid var(--mon-border); border-radius: 6px; padding: 12px 14px; flex: 1; min-width: 130px; }
+  .mon-tile-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .mon-tile-value.is-empty { color: var(--mon-muted); font-size: 18px; }
+  .mon-tile-label { font-size: 11px; color: var(--mon-header); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 5px; }
+  .mon-tile-note { font-size: 11px; color: var(--mon-muted); margin-top: 4px; }
+  .mon-tile-note.is-error { color: var(--mon-danger); }
 
-  .news-item { padding: 10px 0; border-bottom: 1px dashed var(--border); font-size: 13px; line-height: 1.5; }
-  .news-item:last-child { border-bottom: none; }
+  .mon-panel { background: var(--mon-surface); border: 1px solid var(--mon-border); border-radius: 6px; padding: 14px 16px; }
 
-  .repo-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px 6px 4px 12px; font-size: 12px; margin: 0 6px 6px 0; }
-  .repo-chip button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 6px; }
+  .mon-list-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--mon-border); font-size: 13px; }
+  .mon-list-row:last-child { border-bottom: none; }
+  .mon-list-row .mon-mono-id { font-size: 11px; color: var(--mon-muted); flex-shrink: 0; }
+  .mon-list-row .mon-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mon-text); }
+  .mon-list-row .mon-side { font-size: 11px; color: var(--mon-muted); flex-shrink: 0; white-space: nowrap; }
+
+  .mon-item-card { padding: 10px 0; border-bottom: 1px solid var(--mon-border); }
+  .mon-item-card:last-child { border-bottom: none; }
+  .mon-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .mon-item-title { font-size: 13px; color: var(--mon-text); }
+  .mon-item-meta { font-size: 11px; color: var(--mon-muted); white-space: nowrap; }
+  .mon-item-note { font-size: 12px; color: var(--mon-muted); margin-top: 5px; white-space: pre-wrap; }
+  .mon-item-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .mon-item-actions button { background: none; border: none; color: var(--mon-muted); font-family: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; padding: 0; }
+  .mon-item-actions button:hover { color: var(--mon-accent); }
+
+  .mon-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .mon-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 3px; flex-shrink: 0; }
+  .mon-badge.idea { color: var(--mon-accent); background: rgba(94, 225, 255, 0.12); }
+  .mon-badge.bug { color: var(--mon-danger); background: rgba(255, 92, 92, 0.12); }
+
+  .mon-news-item { padding: 9px 0; border-bottom: 1px solid var(--mon-border); font-size: 13px; line-height: 1.5; color: var(--mon-text); }
+  .mon-news-item:last-child { border-bottom: none; }
+
+  .mon-empty { color: var(--mon-muted); font-size: 12px; padding: 6px 0; }
+
+  .mon-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--mon-surface-2); border: 1px solid var(--mon-border); border-radius: 4px; padding: 4px 6px 4px 10px; font-size: 11px; margin: 0 6px 6px 0; color: var(--mon-text); }
+  .mon-chip button { background: none; border: none; color: var(--mon-muted); cursor: pointer; font-size: 13px; padding: 0 2px; font-family: inherit; }
+  .mon-chip button:hover { color: var(--mon-danger); }
+
+  .mon-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .mon-form input, .mon-form select {
+    flex: 1; min-width: 120px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--mon-border);
+    background: var(--mon-surface-2); color: var(--mon-text); font-family: inherit; font-size: 12px;
+  }
+  .mon-form input::placeholder { color: var(--mon-muted); }
+  .mon-form input:focus, .mon-form select:focus { outline: none; border-color: var(--mon-accent); }
+  .mon-btn {
+    background: none; border: 1px solid var(--mon-border); color: var(--mon-text); border-radius: 4px;
+    padding: 8px 16px; font-family: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    cursor: pointer; white-space: nowrap;
+  }
+  .mon-btn:hover { border-color: var(--mon-accent); color: var(--mon-accent); }
+  .mon-btn:disabled { opacity: 0.5; cursor: default; }
+  .mon-refresh { background: none; border: none; color: var(--mon-accent); font-family: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; padding: 0; }
 </style>
 </head>
 <body>
