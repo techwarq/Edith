@@ -1,0 +1,29 @@
+{
+  "name": "edith-desktop",
+  "version": "1.0.0",
+  "description": "Edith desktop app — thin native wrapper around the hosted web UI, same pattern as edith-android's Capacitor server.url.",
+  "main": "main.js",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac dmg --publish=never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.edith.edith.desktop",
+    "productName": "Edith",
+    "files": ["main.js", "build/icon.icns"],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg"],
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "Edith"
+    }
+  }
+}

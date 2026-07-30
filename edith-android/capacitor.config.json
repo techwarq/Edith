@@ -1,0 +1,9 @@
+{
+  "appId": "com.edith.edith",
+  "appName": "Edith",
+  "webDir": "www",
+  "server": {
+    "url": "https://edith-production-d100.up.railway.app",
+    "cleartext": false
+  }
+}

@@ -1,0 +1,38 @@
+[project]
+name = "edith"
+version = "0.1.0"
+description = "Personal AI agent — memory + chat core"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.50.0",
+    "google-genai>=1.0.0",
+    "prompt_toolkit>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.24",
+    "google-api-python-client>=2.100.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+    "playwright>=1.40.0",
+    "browserbase>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.30.0",
+    "qdrant-client>=1.18.0",
+    "temporalio>=1.30.0",
+    "firebase-admin>=6.5.0",
+    "requests>=2.31.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+edith = "edith.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["edith", "edith.llm", "edith.memory", "edith.tools", "edith.google", "edith.temporal"]

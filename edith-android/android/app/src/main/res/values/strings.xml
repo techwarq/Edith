@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Edith</string>
+    <string name="title_activity_main">Edith</string>
+    <string name="package_name">com.edith.edith</string>
+    <string name="custom_url_scheme">com.edith.edith</string>
+</resources>
