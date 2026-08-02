@@ -679,6 +679,87 @@ function blobToBase64(blob) {
   });
 }
 
+// Whisper hallucinates a short filler word ("No,", "Thank you.") when a clip
+// opens with a beat of near-silence before speech starts — the mic starts
+// capturing the instant the button is tapped, before you've actually begun
+// talking. Trimming that lead-in (keeping a small pre-roll so the onset of
+// the word isn't clipped) removes the hallucination trigger.
+const SILENCE_RMS_THRESHOLD = 0.02;
+const SILENCE_WINDOW_SECONDS = 0.02;
+const PRE_ROLL_SECONDS = 0.15;
+const MIN_TRIM_SECONDS = 0.1; // skip re-encoding if there's barely any lead-in to cut
+
+async function trimLeadingSilence(blob) {
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+
+    const channels = [];
+    for (let c = 0; c < audioBuffer.numberOfChannels; c++) channels.push(audioBuffer.getChannelData(c));
+    const mono = new Float32Array(length);
+    for (let i = 0; i < length; i++) {
+      let sum = 0;
+      for (let c = 0; c < channels.length; c++) sum += channels[c][i];
+      mono[i] = sum / channels.length;
+    }
+
+    const windowSize = Math.max(1, Math.round(sampleRate * SILENCE_WINDOW_SECONDS));
+    let speechStart = -1;
+    for (let start = 0; start < length; start += windowSize) {
+      const end = Math.min(start + windowSize, length);
+      let sumSq = 0;
+      for (let i = start; i < end; i++) sumSq += mono[i] * mono[i];
+      if (Math.sqrt(sumSq / (end - start)) > SILENCE_RMS_THRESHOLD) {
+        speechStart = start;
+        break;
+      }
+    }
+    if (speechStart < 0) return blob; // no clear speech onset found — send the original untouched
+
+    const trimStart = Math.max(0, speechStart - Math.round(sampleRate * PRE_ROLL_SECONDS));
+    if (trimStart < sampleRate * MIN_TRIM_SECONDS) return blob; // negligible lead-in, not worth re-encoding
+
+    return encodeWav(mono.subarray(trimStart), sampleRate);
+  } catch (err) {
+    console.error("Silence trimming failed, sending original clip:", err);
+    return blob;
+  }
+}
+
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  function writeString(offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate (mono, 16-bit)
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -691,8 +772,10 @@ async function startRecording() {
 
     mediaRecorder.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
-      const mimeType = mediaRecorder.mimeType || "audio/webm";
-      const blob = new Blob(recordedChunks, { type: mimeType });
+      const rawMimeType = mediaRecorder.mimeType || "audio/webm";
+      const rawBlob = new Blob(recordedChunks, { type: rawMimeType });
+      const blob = await trimLeadingSilence(rawBlob);
+      const mimeType = blob.type || rawMimeType;
       const base64Data = await blobToBase64(blob);
       if (!sessionId) return;
       startLiveStatus();
