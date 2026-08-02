@@ -65,7 +65,7 @@ app.include_router(goals_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(todos_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(mcp_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(deep_research_api.build_router(ctx.conn, settings, API_TOKEN))
-app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.tts_client, API_TOKEN))
+app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
 
 
 @app.middleware("http")
@@ -172,7 +172,7 @@ def _latest_job_reply() -> dict:
     content = replies[0]["content"]
     try:
         spoken_text = voice.to_spoken_style(ctx.client, settings.openrouter_text_model, content)
-        audio_bytes = voice.synthesize(ctx.tts_client, spoken_text, settings.tts_model, settings.tts_voice)
+        audio_bytes = voice.synthesize(ctx.client, spoken_text, settings.tts_model, settings.tts_voice)
         return {
             "content": content,
             "audio_base64": base64.b64encode(audio_bytes).decode("ascii"),
@@ -340,7 +340,7 @@ async def _handle_turn(session_id: str, text: str, voice_enabled: bool) -> Async
                 voice.to_spoken_style, ctx.client, settings.openrouter_text_model, reply
             )
             audio_bytes = await asyncio.to_thread(
-                voice.synthesize, ctx.tts_client, spoken_text, settings.tts_model, settings.tts_voice
+                voice.synthesize, ctx.client, spoken_text, settings.tts_model, settings.tts_voice
             )
             yield _sse("audio", {"data": base64.b64encode(audio_bytes).decode("ascii"), "mime_type": "audio/wav"})
         except VoiceError as e:

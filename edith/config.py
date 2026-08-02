@@ -39,11 +39,13 @@ MAX_CONTEXT_TURNS = 40  # whole user->assistant/tool turns kept in the working-m
 MAX_RESPONSE_TOKENS = 8192  # cap on each completion's max_tokens; avoids huge model defaults
 
 DEFAULT_STT_MODEL = "openai/whisper-large-v3"
-# Gemini's own native TTS (via google-genai's client.interactions.create, not
-# an OpenAI-compatible call) — swapped from OpenRouter's x-ai/grok-voice-tts-1.0
-# 2026-07-19 to drop the OpenRouter dependency for voice output entirely.
-DEFAULT_TTS_MODEL = "gemini-3.1-flash-tts-preview"
-DEFAULT_TTS_VOICE = "Sulafat"  # warm female voice — closest match to the old "Eve"
+# Switched back to OpenRouter for TTS, 2026-07-31 (reversing the 2026-07-19 move to
+# Gemini native TTS) — hexgrad/kokoro-82m via OpenRouter's OpenAI-compatible
+# /api/v1/audio/speech endpoint (same endpoint the old x-ai/grok-voice-tts-1.0 path
+# used). Requested with response_format="wav" so voice.synthesize() gets ready-to-play
+# WAV bytes directly, no PCM rewrapping needed like the Gemini path required.
+DEFAULT_TTS_MODEL = "hexgrad/kokoro-82m"
+DEFAULT_TTS_VOICE = "af_heart"  # top-graded (A) American English female voice per Kokoro's VOICES.md
 MAX_RECORD_SECONDS = 120  # safety cap so /talk can't record forever if Enter is missed
 
 GOOGLE_CLIENT_SECRET_PATH = EDITH_HOME / "google_client_secret.json"

@@ -119,87 +119,55 @@ def test_transcribe_api_error_wrapped():
 
 
 # ---------------------------------------------------------------------------
-# speak (Gemini native TTS via genai.Client.models.generate_content, audio modality)
+# speak (OpenRouter TTS via client.audio.speech.create, hexgrad/kokoro-82m)
 # ---------------------------------------------------------------------------
 
-class FakeInlineData:
-    def __init__(self, data, mime_type="audio/l16;rate=24000;channels=1"):
-        self.data = data
-        self.mime_type = mime_type
-
-
-class FakePart:
-    def __init__(self, inline_data):
-        self.inline_data = inline_data
-
-
-class FakeContent:
-    def __init__(self, parts):
-        self.parts = parts
-
-
-class FakeCandidate:
-    def __init__(self, content):
+class FakeSpeechResponse:
+    def __init__(self, content: bytes):
         self.content = content
 
 
-class FakeGenerateContentResponse:
-    def __init__(self, candidates):
-        self.candidates = candidates
-
-
-class FakeModels:
+class FakeSpeech:
     def __init__(self, response=None, exc=None):
         self.response = response
         self.exc = exc
         self.calls = []
 
-    def generate_content(self, **kwargs):
+    def create(self, **kwargs):
         self.calls.append(kwargs)
         if self.exc:
             raise self.exc
         return self.response
 
 
-class FakeGenaiClient:
-    def __init__(self, models):
-        self.models = models
-
-
-def _fake_response(pcm=b"\x00\x01" * 100, mime_type="audio/l16;rate=24000;channels=1"):
-    return FakeGenerateContentResponse(
-        candidates=[FakeCandidate(FakeContent([FakePart(FakeInlineData(pcm, mime_type))]))]
-    )
+def _fake_wav_bytes() -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(b"\x00\x01" * 100)
+    return buf.getvalue()
 
 
 def test_synthesize_returns_wav_bytes():
-    models = FakeModels(response=_fake_response())
-    tts_client = FakeGenaiClient(models)
+    speech = FakeSpeech(response=FakeSpeechResponse(_fake_wav_bytes()))
+    client = FakeClient(FakeAudio(speech=speech))
 
-    audio_bytes = voice.synthesize(tts_client, "hello", "test-tts-model", "Sulafat")
+    audio_bytes = voice.synthesize(client, "hello", "test-tts-model", "af_heart")
 
     assert audio_bytes[:4] == b"RIFF"
-    assert models.calls[0]["model"] == "test-tts-model"
-    voice_config = models.calls[0]["config"].speech_config.voice_config
-    assert voice_config.prebuilt_voice_config.voice_name == "Sulafat"
-
-
-def test_synthesize_parses_sample_rate_and_channels_from_mime_type():
-    models = FakeModels(response=_fake_response(mime_type="audio/l16;rate=16000;channels=2"))
-    tts_client = FakeGenaiClient(models)
-
-    audio_bytes = voice.synthesize(tts_client, "hello", "test-tts-model", "Sulafat")
-
-    with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
-        assert wf.getframerate() == 16000
-        assert wf.getnchannels() == 2
+    assert speech.calls[0]["model"] == "test-tts-model"
+    assert speech.calls[0]["voice"] == "af_heart"
+    assert speech.calls[0]["input"] == "hello"
+    assert speech.calls[0]["response_format"] == "pcm"
 
 
 def test_synthesize_failure_raises():
-    models = FakeModels(exc=RuntimeError("boom"))
-    tts_client = FakeGenaiClient(models)
+    speech = FakeSpeech(exc=RuntimeError("boom"))
+    client = FakeClient(FakeAudio(speech=speech))
     with pytest.raises(VoiceError):
-        voice.synthesize(tts_client, "hello", "test-tts-model", "Sulafat")
+        voice.synthesize(client, "hello", "test-tts-model", "af_heart")
 
 
 def test_play_locally_success(monkeypatch):
@@ -231,12 +199,12 @@ def test_play_locally_failure_raises(monkeypatch):
 def test_speak_synthesizes_and_plays(monkeypatch):
     playback_calls = []
     monkeypatch.setattr(voice.subprocess, "run", lambda args, check: playback_calls.append(args))
-    models = FakeModels(response=_fake_response())
-    tts_client = FakeGenaiClient(models)
+    speech = FakeSpeech(response=FakeSpeechResponse(_fake_wav_bytes()))
+    client = FakeClient(FakeAudio(speech=speech))
 
-    voice.speak(tts_client, "hello", "test-tts-model", "Sulafat")
+    voice.speak(client, "hello", "test-tts-model", "af_heart")
 
-    assert models.calls[0]["model"] == "test-tts-model"
+    assert speech.calls[0]["model"] == "test-tts-model"
     assert playback_calls[0][0] == "afplay"
 
 

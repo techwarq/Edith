@@ -28,12 +28,12 @@ def _setup_logging(log_path) -> None:
     )
 
 
-def _speak_safely(client, tts_client, text: str, settings: Settings) -> None:
-    """client is OpenRouter (ctx.client, used for the spoken-style rewrite);
-    tts_client is Gemini's native SDK client (ctx.tts_client, used for TTS)."""
+def _speak_safely(client, text: str, settings: Settings) -> None:
+    """client is OpenRouter (ctx.client) — used for both the spoken-style
+    rewrite and TTS synthesis."""
     try:
         spoken_text = voice.to_spoken_style(client, settings.openrouter_text_model, text)
-        voice.speak(tts_client, spoken_text, settings.tts_model, settings.tts_voice)
+        voice.speak(client, spoken_text, settings.tts_model, settings.tts_voice)
     except VoiceError as e:
         print(f"(voice warning: {e})")
 
@@ -49,7 +49,6 @@ def main() -> None:
         sys.exit(1)
 
     conn, client, agent = ctx.conn, ctx.client, ctx.agent
-    tts_client = ctx.tts_client
     session_id, is_first_run = resolve_session(conn, settings.model)
     voice_enabled = False
 
@@ -81,7 +80,7 @@ def main() -> None:
             print(f"You (voice): {transcript}")
             reply = agent.handle_turn(session_id, transcript)
             print(f"Edith: {reply}")
-            _speak_safely(client, tts_client, reply, settings)  # always speak /talk replies
+            _speak_safely(client, reply, settings)  # always speak /talk replies
             continue
 
         if user_text.startswith("/"):
@@ -93,13 +92,13 @@ def main() -> None:
             if output:
                 print(output)
                 if voice_enabled:
-                    _speak_safely(client, tts_client, output, settings)
+                    _speak_safely(client, output, settings)
             continue
 
         reply = agent.handle_turn(session_id, user_text)
         print(f"Edith: {reply}")
         if voice_enabled:
-            _speak_safely(client, tts_client, reply, settings)
+            _speak_safely(client, reply, settings)
 
     store.end_session(conn, session_id)
     conn.close()

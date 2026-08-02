@@ -60,8 +60,8 @@ EXECUTORS = {
 @dataclass
 class AppContext:
     conn: sqlite3.Connection
-    client: openai.OpenAI  # OpenRouter — the core agent's tool-calling loop, plus STT + spoken-style rewrite
-    tts_client: genai.Client  # Gemini native SDK — TTS, web_search grounding, and embeddings
+    client: openai.OpenAI  # OpenRouter — the core agent's tool-calling loop, plus STT, TTS, and spoken-style rewrite
+    genai_client: genai.Client  # Gemini native SDK — web_search grounding and embeddings (TTS moved to OpenRouter 2026-07-31)
     qdrant_client: QdrantClient | None  # None when QDRANT_URL/QDRANT_API_KEY aren't set — semantic memory is optional
     agent: Agent
     registry: ToolRegistry
@@ -116,16 +116,16 @@ def resolve_session(conn: sqlite3.Connection, model: str) -> tuple[str, bool]:
 def build_app_context(settings: Settings) -> AppContext:
     google_auth.write_credentials_from_env()  # no-op locally; writes from env vars on a fresh volume
     conn = db.connect(settings.db_path)  # raises db.DatabaseError — caller decides how to report it
-    client = make_client(settings.api_key)  # OpenRouter — core agent's tool-calling loop
-    tts_client = genai.Client(api_key=settings.gemini_api_key)  # Gemini native SDK — TTS, web_search, embeddings
+    client = make_client(settings.api_key)  # OpenRouter — core agent's tool-calling loop, STT, TTS
+    genai_client = genai.Client(api_key=settings.gemini_api_key)  # Gemini native SDK — web_search, embeddings
     qdrant_client = vectors.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key)
     vectors.ensure_collection(qdrant_client)
-    registry = build_registry(conn, tts_client, settings.gemini_grounding_model, qdrant_client, settings)
-    agent = Agent(conn, client, settings.model, registry, qdrant_client, tts_client)
+    registry = build_registry(conn, genai_client, settings.gemini_grounding_model, qdrant_client, settings)
+    agent = Agent(conn, client, settings.model, registry, qdrant_client, genai_client)
     return AppContext(
         conn=conn,
         client=client,
-        tts_client=tts_client,
+        genai_client=genai_client,
         qdrant_client=qdrant_client,
         agent=agent,
         registry=registry,

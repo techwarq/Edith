@@ -9,15 +9,12 @@ of crashing the REPL over a mic glitch or a TTS hiccup.
 
 import io
 import logging
-import re
 import subprocess
 import tempfile
 import wave
 from pathlib import Path
 
 import openai
-from google import genai
-from google.genai import types
 
 from edith.config import MAX_RECORD_SECONDS
 
@@ -26,6 +23,7 @@ logger = logging.getLogger("edith.voice")
 SAMPLE_RATE = 16000
 CHANNELS = 1
 SPOKEN_STYLE_MAX_TOKENS = 512
+TTS_SAMPLE_RATE = 24000  # kokoro-82m's native output rate
 
 SPOKEN_STYLE_PROMPT = (
     "Rewrite the following so it sounds natural when read aloud by a warm, friendly "
@@ -142,44 +140,24 @@ def to_spoken_style(client: openai.OpenAI, chat_model: str, text: str) -> str:
         return text
 
 
-_AUDIO_MIME_RATE_RE = re.compile(r"rate=(\d+)")
-_AUDIO_MIME_CHANNELS_RE = re.compile(r"channels=(\d+)")
-
-
-def synthesize(tts_client: genai.Client, text: str, model: str, voice: str) -> bytes:
+def synthesize(client: openai.OpenAI, text: str, model: str, voice: str) -> bytes:
     """TTS only — returns WAV bytes, no playback. Used by server.py (the
     client's browser plays the audio, not this machine) and by speak() below.
 
-    Uses Gemini's own native TTS via models.generate_content with
-    response_modalities=["AUDIO"] and an explicit SpeechConfig/VoiceConfig —
-    not an OpenAI-compatible call (Gemini's OpenAI-compat endpoint has no
-    /v1/audio/speech equivalent), and not client.interactions.create (used
-    until 2026-07-19: that's a newer "NextGen interactions" surface, less
-    standard than generate_content's documented audio-modality path, and
-    voice consistency across separate replies was noticeably worse with it —
-    switched after confirming generate_content is the same TTS model via the
-    officially documented interface). Returns raw 16-bit PCM audio, sample
-    rate/channels read from the response's mime type (e.g.
-    "audio/l16;rate=24000;channels=1"), wrapped in a WAV header here."""
+    Uses OpenRouter's OpenAI-compatible /api/v1/audio/speech endpoint (same
+    `client` as the core agent's tool-calling loop and transcribe()'s STT
+    call) — hexgrad/kokoro-82m as of 2026-07-31. OpenRouter's endpoint only
+    accepts response_format "mp3" or "pcm" (requesting "wav" 400s with a
+    ZodError) so raw PCM is requested and hand-wrapped into a WAV header,
+    same as the Gemini native-TTS path this replaced."""
     try:
-        resp = tts_client.models.generate_content(
+        resp = client.audio.speech.create(
             model=model,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice))
-                ),
-            ),
+            voice=voice,
+            input=text,
+            response_format="pcm",
         )
-        part = resp.candidates[0].content.parts[0]
-        pcm = part.inline_data.data
-        mime_type = part.inline_data.mime_type or ""
-        rate_match = _AUDIO_MIME_RATE_RE.search(mime_type)
-        channels_match = _AUDIO_MIME_CHANNELS_RE.search(mime_type)
-        sample_rate = int(rate_match.group(1)) if rate_match else 24000
-        channels = int(channels_match.group(1)) if channels_match else 1
-        return _pcm_to_wav_bytes(pcm, sample_rate, channels)
+        return _pcm_to_wav_bytes(resp.content, TTS_SAMPLE_RATE, CHANNELS)
     except Exception as e:  # noqa: BLE001
         logger.exception("TTS synthesis failed")
         raise VoiceError(f"Text-to-speech failed: {e}") from e
@@ -199,7 +177,7 @@ def play_locally(audio_bytes: bytes) -> None:
         tmp_path.unlink(missing_ok=True)
 
 
-def speak(tts_client: genai.Client, text: str, model: str, voice: str) -> None:
+def speak(client: openai.OpenAI, text: str, model: str, voice: str) -> None:
     """CLI convenience wrapper: synthesize + play through local speakers."""
-    audio_bytes = synthesize(tts_client, text, model, voice)
+    audio_bytes = synthesize(client, text, model, voice)
     play_locally(audio_bytes)
