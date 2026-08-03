@@ -97,6 +97,17 @@ def test_facts_lists_stored(conn, settings):
     assert "role: PM" in output
 
 
+def test_working_on_empty(conn, settings):
+    _, _, output = commands.handle_command("/working-on", conn, settings, "sid", agent=None, voice_enabled=False)
+    assert "Nothing tracked yet" in output
+
+
+def test_working_on_lists_tracked_projects(conn, settings):
+    store.save_fact(conn, "edith", "building the memory layer", category="working_on_project")
+    _, _, output = commands.handle_command("/working-on", conn, settings, "sid", agent=None, voice_enabled=False)
+    assert output == "edith: building the memory layer"
+
+
 def test_history_no_query(conn, settings):
     _, _, output = commands.handle_command("/history", conn, settings, "sid", agent=None, voice_enabled=False)
     assert "Usage" in output

@@ -21,6 +21,7 @@ from edith.google import auth as google_auth
 from edith.google.auth import GoogleAuthError
 from edith.memory import search as memory_search
 from edith.memory import store
+from edith.tools.projects import WORKING_ON_CATEGORY
 from edith import whatsapp
 from edith.whatsapp import WhatsAppError
 
@@ -141,6 +142,13 @@ def handle_command(
         if not facts:
             return session_id, voice_enabled, "No facts stored yet."
         lines = [f"[{f['category']}] {f['key']}: {f['value']}" if f["category"] else f"{f['key']}: {f['value']}" for f in facts]
+        return session_id, voice_enabled, "\n".join(lines)
+
+    if cmd == "/working-on":
+        facts = store.get_facts_by_category(conn, WORKING_ON_CATEGORY)
+        if not facts:
+            return session_id, voice_enabled, "Nothing tracked yet — tell me what you're working on and I'll remember it."
+        lines = [f"{f['key']}: {f['value']}" for f in facts]
         return session_id, voice_enabled, "\n".join(lines)
 
     if cmd == "/jobs":

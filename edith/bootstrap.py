@@ -20,6 +20,7 @@ from edith.google import drive as google_drive
 from edith.google import gmail as google_gmail
 from edith.llm.client import make_client
 from edith.memory import db, store, vectors
+from edith.tools import github as github_tool
 from edith.tools import goals as goals_tool
 from edith.tools import health as health_tool
 from edith.tools import hunter as hunter_tool
@@ -28,8 +29,10 @@ from edith.tools import monid as monid_tool
 from edith.tools import news as news_tool
 from edith.tools import monitor as monitor_tool
 from edith.tools import notes, notify, research as research_tool, scheduling, tracking, web_search
+from edith.tools import projects as projects_tool
 from edith.tools import social as social_tool
 from edith.tools import todos as todos_tool
+from edith.tools import vercel as vercel_tool
 from edith.tools import youtube as youtube_tool
 from edith.tools.registry import ToolRegistry
 from edith import whatsapp
@@ -43,9 +46,9 @@ WELCOME = (
     "(connect Health Connect, Android app only), /skill-talk <what you want to achieve> "
     "(tell me your niche, voice, platforms, and goals so I can give you grounded X/Instagram "
     "post and video ideas), /approve (review queued actions), "
-    "/new (fresh session), /facts (what I know), /history <query> (search past "
-    "conversations), /jobs [count] (recent output from scheduled jobs + nightly "
-    "reflection), /exit\n"
+    "/new (fresh session), /facts (what I know), /working-on (projects you're currently "
+    "working on), /history <query> (search past conversations), /jobs [count] (recent "
+    "output from scheduled jobs + nightly reflection), /exit\n"
 )
 
 EXECUTORS = {
@@ -101,6 +104,9 @@ def build_registry(
     goals_tool.register(registry, conn)
     todos_tool.register(registry, conn)
     hunter_tool.register(registry, settings)
+    projects_tool.register(registry, conn)
+    github_tool.register(registry, settings)
+    vercel_tool.register(registry, settings)
     mcp_client.register_all(registry, conn)  # user-configured MCP servers — see edith/memory/mcp_store.py
     return registry
 
