@@ -22,9 +22,22 @@ def register(
     genai_client: genai.Client | None = None,
 ) -> None:
     def save_fact(key: str, value: str, category: str = "") -> str:
+        # Fetched before the write so a same-key update doesn't see itself as a "duplicate".
+        others = (
+            [f for f in store.get_facts_by_category(conn, category) if f["key"] != key]
+            if category
+            else []
+        )
         store.save_fact(conn, key=key, value=value, category=category or None)
         vectors.upsert(qdrant_client, genai_client, "fact", f"{key}: {value}", category=category or "")
-        return f"Saved: {key} = {value}"
+        result = f"Saved: {key} = {value}"
+        if others:
+            existing = "; ".join(f"{f['key']}={f['value']}" for f in others)
+            result += (
+                f"\n(Other '{category}' facts already stored — check for overlap/conflict "
+                f"and forget_fact whichever is now stale: {existing})"
+            )
+        return result
 
     def forget_fact(key: str) -> str:
         removed = store.forget_fact(conn, key)

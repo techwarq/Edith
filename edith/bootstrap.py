@@ -27,7 +27,7 @@ from edith.tools import mcp_client
 from edith.tools import monid as monid_tool
 from edith.tools import news as news_tool
 from edith.tools import monitor as monitor_tool
-from edith.tools import notes, notify, scheduling, tracking, web_search
+from edith.tools import notes, notify, research as research_tool, scheduling, tracking, web_search
 from edith.tools import social as social_tool
 from edith.tools import todos as todos_tool
 from edith.tools import youtube as youtube_tool
@@ -82,6 +82,7 @@ def build_registry(
     registry = ToolRegistry()
     notes.register(registry, conn, qdrant_client, genai_client)
     web_search.register(registry, genai_client, model, qdrant_client)
+    research_tool.register(registry, genai_client, model, qdrant_client)
     news_tool.register(registry, genai_client, model)
     youtube_tool.register(registry, genai_client, model)
     google_gmail.register(registry, conn)
