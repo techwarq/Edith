@@ -16,7 +16,7 @@
   "build": {
     "appId": "com.edith.edith.desktop",
     "productName": "Edith",
-    "files": ["main.js", "build/icon.icns"],
+    "files": ["main.js", "widget.html", "widget.js", "widget-preload.js", "build/icon.icns"],
     "mac": {
       "category": "public.app-category.productivity",
       "target": ["dmg"],
