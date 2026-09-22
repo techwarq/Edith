@@ -47,6 +47,19 @@ def settings(tmp_path):
         vercel_analytics_token="",
         vercel_team_id="",
         github_token="",
+        linkedin_text_model="test-linkedin-text-model",
+        linkedin_fallback_text_model="test-linkedin-fallback-text-model",
+        linkedin_image_model="test-linkedin-image-model",
+        linkedin_fallback_image_model="test-linkedin-fallback-image-model",
+        linkedin_client_id="",
+        linkedin_client_secret="",
+        linkedin_redirect_uri="",
+        linkedin_version="202607",
+        database_url="",
+        pgvector_enabled=True,
+        computer_use_writer_model="test-computer-use-writer-model",
+        computer_use_max_steps=12,
+        computer_use_confidence_threshold=0.5,
     )
 
 

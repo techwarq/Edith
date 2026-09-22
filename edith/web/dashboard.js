@@ -12,6 +12,8 @@ const screens = {
   goals: document.getElementById("goals-screen"),
   todos: document.getElementById("todos-screen"),
   insights: document.getElementById("insights-screen"),
+  jobs: document.getElementById("jobs-screen"),
+  content: document.getElementById("content-screen"),
   mcp: document.getElementById("mcp-screen"),
 };
 
@@ -24,6 +26,8 @@ function switchTab(name) {
   else if (name === "goals") loadGoals();
   else if (name === "todos") loadTodos();
   else if (name === "insights") loadInsights();
+  else if (name === "jobs") loadJobApplications();
+  else if (name === "content") loadContent();
   else if (name === "mcp") loadMcpServers();
 }
 
@@ -791,6 +795,282 @@ function wireTodoCardActions(panel) {
         loadTodos();
       } catch (err) {
         alert("Failed to delete todo: " + err.message);
+      }
+    });
+  });
+}
+
+// --- Jobs --------------------------------------------------------------------
+
+const JOB_STATUS_LABEL = {
+  discovered: "Discovered", drafted: "Drafted", queued_for_approval: "Needs approval",
+  sent: "Sent", applied: "Applied", failed: "Failed", skipped_duplicate: "Skipped (duplicate)",
+};
+
+async function loadJobApplications() {
+  const panel = document.getElementById("jobs-panel");
+  panel.innerHTML = '<div class="empty-state">Loading…</div>';
+  try {
+    const [config, data] = await Promise.all([apiGet("/api/jobs-config"), apiGet("/api/job-applications")]);
+    renderJobApplications(panel, config, data.applications);
+  } catch (err) {
+    panel.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderJobApplications(panel, config, applications) {
+  panel.innerHTML = `
+    <div class="job-config-bar">
+      <div>
+        <strong>${config.autonomous_enabled ? "Autonomous" : "Manual review"}</strong>
+        <span class="job-cap"> — ${config.sent_today}/${config.daily_cap} sent today</span>
+      </div>
+      <div class="job-config-toggle">
+        <button id="job-autonomous-off" class="${config.autonomous_enabled ? "" : "on"}">Manual (queue for /approve)</button>
+        <button id="job-autonomous-on" class="${config.autonomous_enabled ? "on" : ""}">Autonomous (send directly)</button>
+      </div>
+    </div>
+    <div id="jobs-list">
+      ${applications.length ? applications.map(renderJobCard).join("") : '<div class="empty-state">No job applications yet — Edith will populate this as the job-search pipeline runs.</div>'}
+    </div>
+  `;
+
+  document.getElementById("job-autonomous-off").addEventListener("click", () => setJobsAutonomous(false));
+  document.getElementById("job-autonomous-on").addEventListener("click", () => setJobsAutonomous(true));
+
+  wireJobCardActions(panel);
+}
+
+async function setJobsAutonomous(enabled) {
+  if (enabled && !confirm("Enable autonomous mode? Edith will send emails and submit forms directly, without asking for approval first.")) return;
+  try {
+    await apiPost("/api/jobs-config", { autonomous_enabled: enabled });
+    loadJobApplications();
+  } catch (err) {
+    alert("Failed to update autonomous mode: " + err.message);
+  }
+}
+
+function renderJobCard(app) {
+  const draft = app.draft_subject || app.draft_body
+    ? `<details class="job-draft"><summary>${app.status === "sent" || app.status === "applied" ? "View sent content" : "View draft"}</summary>
+         <div class="job-draft-body">${app.draft_subject ? `<strong>${escapeHtml(app.draft_subject)}</strong>\n\n` : ""}${escapeHtml(app.draft_body || "")}</div>
+       </details>`
+    : "";
+  const actions = app.status === "queued_for_approval"
+    ? `<div class="job-actions">
+         <button data-job-approve="${app.id}">Approve &amp; send</button>
+         <button data-job-reject="${app.id}">Reject</button>
+       </div>`
+    : "";
+  return `
+    <div class="job-card" data-job-id="${app.id}">
+      <div class="job-card-top">
+        <div class="job-title">${escapeHtml(app.company)} — ${escapeHtml(app.role_title || "(no role)")}</div>
+        <span class="job-status-pill ${app.status}">${JOB_STATUS_LABEL[app.status] || app.status}</span>
+      </div>
+      <div class="job-meta">
+        ${escapeHtml(app.channel)}${app.contact_email ? " · " + escapeHtml(app.contact_email) : ""}
+        ${app.source_url ? ` · <a href="${escapeHtml(app.source_url)}" target="_blank" rel="noopener">source</a>` : ""}
+        ${app.error ? ` · <span style="color:#b02a37">${escapeHtml(app.error)}</span>` : ""}
+      </div>
+      ${draft}
+      ${actions}
+    </div>`;
+}
+
+function wireJobCardActions(panel) {
+  panel.querySelectorAll("[data-job-approve]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiPost(`/api/job-applications/${btn.dataset.jobApprove}/approve`, {});
+        loadJobApplications();
+      } catch (err) {
+        alert("Failed to approve: " + err.message);
+      }
+    });
+  });
+
+  panel.querySelectorAll("[data-job-reject]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Reject this application?")) return;
+      try {
+        await apiPost(`/api/job-applications/${btn.dataset.jobReject}/reject`, {});
+        loadJobApplications();
+      } catch (err) {
+        alert("Failed to reject: " + err.message);
+      }
+    });
+  });
+}
+
+// --- Content (daily viral queue: LinkedIn + X from shipped code) --------------
+
+const CONTENT_SLOT_LABEL = {
+  linkedin_edu: "LinkedIn · Teach", linkedin_app: "LinkedIn · App",
+  x_edu: "X · Teach", x_app: "X · App", x_build: "X · Build in public",
+};
+const CONTENT_PLATFORM_ICON = { linkedin: "💼", x: "𝕏" };
+
+function contentAuthorUrn() {
+  return localStorage.getItem("edith_content_author") || "";
+}
+
+async function loadContent() {
+  const panel = document.getElementById("content-panel");
+  panel.innerHTML = '<div class="empty-state">Loading…</div>';
+  try {
+    const [authors, queue, week, digest] = await Promise.all([
+      apiGet("/api/linkedin/authors").catch(() => ({ authors: [] })),
+      apiGet("/api/linkedin/daily", contentAuthorUrn() ? { author_urn: contentAuthorUrn() } : {}).catch(() => ({ posts: [] })),
+      apiGet("/api/linkedin/week", contentAuthorUrn() ? { author_urn: contentAuthorUrn() } : {}).catch(() => ({ days: [] })),
+      apiGet("/api/linkedin/digest", { since_days: 7 }).catch(() => null),
+    ]);
+    renderContent(panel, authors.authors || [], queue.posts || [], week.days || [], digest);
+  } catch (err) {
+    panel.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderContent(panel, authors, posts, weekDays, digest) {
+  const personals = authors.filter((a) => a.type === "personal");
+  let saved = contentAuthorUrn();
+  if (!saved && personals.length) {
+    // prefer the connected (has_token) personal author, else first
+    const connected = personals.find((a) => a.has_token) || personals[0];
+    saved = connected.urn;
+    localStorage.setItem("edith_content_author", saved);
+  }
+  const commitCount = digest ? digest.commits.length : 0;
+  const digestLines = digest && digest.commits.length
+    ? digest.commits.slice(0, 8).map((c) => `<div class="span-row">📦 <strong>${escapeHtml(c.repo.split("/")[1] || c.repo)}</strong> — ${escapeHtml(c.message)}</div>`).join("")
+    : '<div class="empty-state">No commits this week — add GITHUB_TOKEN for private repos, or check GITHUB_DIGEST_REPOS.</div>';
+
+  panel.innerHTML = `
+    <h3>Today — what to post</h3>
+    <div class="job-config-bar">
+      <div>
+        <label style="font-size:12px;color:var(--muted)">Posting as&nbsp;</label>
+        <select id="content-author" style="padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;max-width:280px">
+          ${personals.length ? personals.map((a) => `<option value="${escapeHtml(a.urn)}" ${a.urn === saved ? "selected" : ""}>${escapeHtml(a.name)} ${a.has_token ? "●" : "○"}</option>`).join("") : '<option value="">(connect LinkedIn first)</option>'}
+        </select>
+        <span class="job-cap"> — ● connected · ○ drafts only</span>
+      </div>
+      <div class="job-config-toggle">
+        <button id="content-generate">⚡ Generate today's queue</button>
+      </div>
+    </div>
+    <div id="content-list">
+      ${posts.length ? posts.map(renderContentCard).join("") : '<div class="empty-state">No queue yet today — hit “Generate today\'s queue”. Grounded in your shipped commits + viral playbooks (shengkunye / MonidHQ / arlanr).</div>'}
+    </div>
+    <div class="panel-header"><h3>This week — Talo growth arc</h3><span class="see-all-link" id="content-week-generate">Generate week →</span></div>
+    <div id="content-week">
+      ${(weekDays || []).length ? weekDays.map(renderContentDay).join("") : '<div class="empty-state">No week plan yet — 7 days × (1 LinkedIn + 2 X) to grow talo.abstraklabs.com. Hit “Generate week”.</div>'}
+    </div>
+    <h3>Shipped this week (${commitCount} commits)</h3>
+    <div class="list-item"><div class="list-detail" style="border:none;margin:0;padding:0">${digestLines}</div></div>
+  `;
+
+  document.getElementById("content-author").addEventListener("change", (e) => {
+    localStorage.setItem("edith_content_author", e.target.value);
+    loadContent();
+  });
+  document.getElementById("content-generate").addEventListener("click", async () => {
+    const urn = document.getElementById("content-author").value;
+    if (!urn) { alert("Pick a LinkedIn author first (connect via /api/linkedin/auth/start)."); return; }
+    const btn = document.getElementById("content-generate");
+    btn.disabled = true; btn.textContent = "Generating… (~30s)";
+    try {
+      await apiPost("/api/linkedin/daily/generate", { author_urn: urn, author_urn_x: "x:TeenCode6", since_days: 7 });
+      loadContent();
+    } catch (err) {
+      alert("Generate failed: " + err.message);
+      btn.disabled = false; btn.textContent = "⚡ Generate today's queue";
+    }
+  });
+
+  document.getElementById("content-week-generate").addEventListener("click", async () => {
+    const urn = (document.getElementById("content-author") || {}).value || contentAuthorUrn();
+    if (!urn) { alert("Pick a LinkedIn author first (connect via /api/linkedin/auth/start)."); return; }
+    if (!confirm("Generate a fresh 7-day Talo plan? This takes ~5 min and adds 21 drafts.")) return;
+    try {
+      await apiPost("/api/linkedin/week/generate", { author_urn: urn, author_urn_x: "x:TeenCode6" });
+      loadContent();
+    } catch (err) {
+      alert("Week generate failed: " + err.message);
+    }
+  });
+
+  wireContentCardActions(panel);
+}
+
+function renderContentDay(day) {
+  const d = new Date(day.date + "T00:00:00Z");
+  const label = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return `
+    <h3>${escapeHtml(label)}</h3>
+    ${day.posts.map(renderContentCard).join("")}`;
+}
+
+function renderContentCard(p) {
+  const slot = p.slot || (p.pillar || "").split(":")[1] || "post";
+  const label = CONTENT_SLOT_LABEL[slot] || slot;
+  const icon = CONTENT_PLATFORM_ICON[p.platform] || "📝";
+  const isX = p.platform === "x";
+  const status = p.status || "draft";
+  return `
+    <div class="todo-card" data-content-id="${p.id}">
+      <div class="todo-card-top">
+        <div class="todo-title">${icon} ${escapeHtml(label)}</div>
+        <span class="todo-status-pill ${status === "published" ? "done" : status === "failed" ? "todo" : "in_progress"}">${escapeHtml(status)}</span>
+      </div>
+      ${p.hook ? `<div class="todo-meta">🪝 ${escapeHtml(p.hook)}</div>` : ""}
+      <div class="todo-note">${escapeHtml(p.commentary || "")}</div>
+      ${p.published_url ? `<div class="todo-meta">🔗 <a href="${escapeHtml(p.published_url)}" target="_blank" rel="noopener">view post</a></div>` : ""}
+      ${p.error ? `<div class="todo-meta" style="color:var(--danger)">⚠ ${escapeHtml(p.error)}</div>` : ""}
+      <div class="todo-actions">
+        <button data-content-copy="${p.id}">Copy</button>
+        ${!isX && status !== "published" ? `<button data-content-publish="${p.id}">Publish to LinkedIn</button>` : ""}
+        ${isX ? `<span class="todo-meta">post manually on X (API is $100/mo)</span>` : ""}
+        <button data-content-delete="${p.id}">Delete</button>
+      </div>
+    </div>`;
+}
+
+function wireContentCardActions(panel) {
+  panel.querySelectorAll("[data-content-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const card = btn.closest("[data-content-id]");
+      const text = card.querySelector(".todo-note").innerText;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = "Copied ✓";
+        setTimeout(() => (btn.textContent = "Copy"), 1500);
+      } catch {
+        alert("Copy failed — select the text manually.");
+      }
+    });
+  });
+  panel.querySelectorAll("[data-content-publish]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Publish this to LinkedIn now?")) return;
+      try {
+        const res = await apiPost(`/api/linkedin/posts/${btn.dataset.contentPublish}/publish`, {});
+        alert("Published: " + (res.published_url || res.published_urn || "ok"));
+        loadContent();
+      } catch (err) {
+        alert("Publish failed: " + err.message);
+      }
+    });
+  });
+  panel.querySelectorAll("[data-content-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Delete this draft?")) return;
+      try {
+        await fetch(`/api/linkedin/posts/${btn.dataset.contentDelete}?token=${encodeURIComponent(token)}`, { method: "DELETE" });
+        loadContent();
+      } catch (err) {
+        alert("Delete failed: " + err.message);
       }
     });
   });

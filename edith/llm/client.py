@@ -170,7 +170,12 @@ def _tool_status(name: str) -> str:
     return TOOL_STATUS.get(name, name.replace("_", " ").capitalize())
 
 
-def _execute_tool_call(tool_call, dispatch: ToolDispatch, recorder: Optional[Recorder] = None) -> dict:
+def _execute_tool_call(
+    tool_call,
+    dispatch: ToolDispatch,
+    recorder: Optional[Recorder] = None,
+    on_progress: Optional[Callable[[str], None]] = None,
+) -> dict:
     name = tool_call.function.name
     reply = {"role": "tool", "tool_call_id": tool_call.id, "name": name}
     t0 = time.monotonic()
@@ -183,7 +188,7 @@ def _execute_tool_call(tool_call, dispatch: ToolDispatch, recorder: Optional[Rec
         return reply
 
     try:
-        result = dispatch(name, args)
+        result = dispatch(name, args, on_progress)
         reply["content"] = result if isinstance(result, str) else json.dumps(result)
         status, error = "ok", None
         if isinstance(reply["content"], str) and reply["content"].startswith("ERROR"):
@@ -277,7 +282,7 @@ def run_completion_with_tools(
         for tc in tool_calls:
             if on_progress:
                 on_progress(_tool_status(tc.function.name))
-            reply = _execute_tool_call(tc, dispatch, recorder)
+            reply = _execute_tool_call(tc, dispatch, recorder, on_progress)
             working.append(reply)
             new_messages.append(reply)
         # loop resubmits with tool replies appended

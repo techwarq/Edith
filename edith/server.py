@@ -35,6 +35,7 @@ from edith.commands import handle_command
 from edith.config import WHATSAPP_QR_PATH, load_settings
 from edith.memory import db, store
 from edith.goals import api as goals_api
+from edith.job_applications import api as job_applications_api
 from edith.mcp import api as mcp_api
 from edith.memory import health as health_metrics
 from edith.monitor import api as monitor_api
@@ -43,6 +44,10 @@ from edith.observability.seed_evals import seed_default_evals
 from edith.temporal import api as deep_research_api
 from edith.todos import api as todos_api
 from edith.voice import VoiceError
+from edith.linkedin import api as linkedin_api
+from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
+from edith.computer_use.voice_loop import SITES, VoiceTickSession
+from edith.computer_use.writer import make_writer_client
 
 logger = logging.getLogger("edith.server")
 
@@ -66,6 +71,8 @@ app.include_router(todos_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(mcp_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(deep_research_api.build_router(ctx.conn, settings, API_TOKEN))
 app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
+app.include_router(job_applications_api.build_router(ctx.conn, API_TOKEN))
+app.include_router(linkedin_api.build_router(ctx.conn, ctx.genai_client, API_TOKEN))
 
 
 @app.middleware("http")
@@ -286,10 +293,72 @@ async def audio(request: Request) -> StreamingResponse | JSONResponse:
     return StreamingResponse(_handle_audio(session_id, data, mime_type), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
+
+# Per-session VoiceTickSession, keyed by the same session_id /api/connect
+# hands out — holds a live pinned-window AXUIElement across ticks, which
+# can't be persisted to the DB like the rest of session state (store.py)
+# anyway, so an in-memory dict is the natural fit here, same tier as
+# runner.py's own local-machine-only design.
+_voice_tick_sessions: dict[str, VoiceTickSession] = {}
+
+
+def _get_voice_tick_session(session_id: str) -> VoiceTickSession:
+    session = _voice_tick_sessions.get(session_id)
+    if session is None:
+        client = TypeSafeClient(settings.api_key)
+        writer_client = make_writer_client(settings.api_key) if settings.api_key else None
+        session = VoiceTickSession(
+            client,
+            sites=SITES,
+            writer_client=writer_client,
+            writer_model=settings.computer_use_writer_model,
+            confidence_threshold=settings.computer_use_confidence_threshold,
+        )
+        _voice_tick_sessions[session_id] = session
+    return session
+
+
+@app.post("/api/voice_tick", response_model=None)
+async def voice_tick(request: Request) -> JSONResponse:
+    """One tick of the fixed-questions/live-state voice loop (see
+    edith/computer_use/voice_loop.py) — a fast single round trip, not an
+    agent turn, so plain JSON rather than SSE. Called repeatedly (debounced
+    client-side to ~180-200ms) with the growing transcript for one
+    continuous Control-hold session."""
+    body = await request.json()
+    if (err := _unauthorized(body)) is not None:
+        return err
+    session_id = body.get("session_id", "")
+    transcript = body.get("transcript", "")
+    if not session_id:
+        return JSONResponse({"error": "session_id is required"}, status_code=400)
+    try:
+        session = _get_voice_tick_session(session_id)
+        result = await asyncio.to_thread(session.tick, transcript)
+    except TypeSafeError as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    return JSONResponse(result.to_dict())
+
+
+@app.post("/api/voice_tick_end", response_model=None)
+async def voice_tick_end(request: Request) -> JSONResponse:
+    """Called when Control is released — discards the session's pinned
+    window/history so the next hold starts clean rather than continuing to
+    act on whatever window the previous hold left pinned."""
+    body = await request.json()
+    if (err := _unauthorized(body)) is not None:
+        return err
+    session_id = body.get("session_id", "")
+    _voice_tick_sessions.pop(session_id, None)
+    return JSONResponse({"ok": True})
+
+
 async def _handle_audio(session_id: str, data: str, mime_type: str) -> AsyncIterator[str]:
     try:
         audio_bytes = base64.b64decode(data)
         ext = mime_type.split("/")[-1].split(";")[0]
+        import pathlib, time  # noqa: PLC0415 — temporary debug capture, remove after diagnosis
+        pathlib.Path(f"/tmp/edith-debug-audio-{int(time.time())}.{ext}").write_bytes(audio_bytes)
         text = await asyncio.to_thread(
             voice.transcribe, ctx.client, audio_bytes, settings.stt_model, f"recording.{ext}", mime_type
         )

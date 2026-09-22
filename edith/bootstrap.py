@@ -20,10 +20,13 @@ from edith.google import drive as google_drive
 from edith.google import gmail as google_gmail
 from edith.llm.client import make_client
 from edith.memory import db, store, vectors
+from edith.tools import computer_use as computer_use_tool
 from edith.tools import github as github_tool
 from edith.tools import goals as goals_tool
 from edith.tools import health as health_tool
 from edith.tools import hunter as hunter_tool
+from edith.tools import job_applications as job_applications_tool
+from edith.tools import outreach as outreach_tool
 from edith.tools import mcp_client
 from edith.tools import monid as monid_tool
 from edith.tools import news as news_tool
@@ -104,9 +107,12 @@ def build_registry(
     goals_tool.register(registry, conn)
     todos_tool.register(registry, conn)
     hunter_tool.register(registry, settings)
+    job_applications_tool.register(registry, conn, genai_client, model)
+    outreach_tool.register(registry, conn, genai_client, model)
     projects_tool.register(registry, conn)
     github_tool.register(registry, settings)
     vercel_tool.register(registry, settings)
+    computer_use_tool.register(registry, settings)
     mcp_client.register_all(registry, conn)  # user-configured MCP servers — see edith/memory/mcp_store.py
     return registry
 

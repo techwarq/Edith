@@ -146,6 +146,44 @@ VERCEL_TEAM_ID = os.environ.get("VERCEL_TEAM_ID", "").strip()  # only needed if 
 # with no token at all, only private repos need one.
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 
+# Job-application pipeline (edith/tools/job_applications.py, edith/job_applications/api.py,
+# JOB_SEARCH_INSTRUCTION in edith/temporal/schedules.py). Cron fires several times across
+# Bengaluru working hours (~9:30am-6:30pm IST) rather than one daily batch, so sends are
+# trickled through the day instead of firing all at once. daily_cap is enforced via
+# job_applications_store.count_sent_today(), not by Temporal itself.
+JOB_SEARCH_SCHEDULE_ID = "edith-job-search"
+JOB_SEARCH_CRON = os.environ.get("EDITH_JOB_SEARCH_CRON", "30 4-13 * * 1-5").strip()
+JOB_SEARCH_LEADS_PER_RUN = int(os.environ.get("EDITH_JOB_SEARCH_LEADS_PER_RUN", "3"))
+JOBS_DAILY_CAP = int(os.environ.get("EDITH_JOBS_DAILY_CAP", "25"))
+
+# LinkedIn Growth Engine
+LINKEDIN_TEXT_MODEL = os.environ.get("LINKEDIN_TEXT_MODEL", "qwen/qwen3.7-flash").strip()
+LINKEDIN_FALLBACK_TEXT_MODEL = os.environ.get("LINKEDIN_FALLBACK_TEXT_MODEL", "qwen/qwen3.5-flash-02-23").strip()
+LINKEDIN_IMAGE_MODEL = os.environ.get("LINKEDIN_IMAGE_MODEL", "meta/muse-image").strip()
+LINKEDIN_FALLBACK_IMAGE_MODEL = os.environ.get("LINKEDIN_FALLBACK_IMAGE_MODEL", "google/gemini-2.5-flash-image").strip()
+LINKEDIN_CLIENT_ID = os.environ.get("LINKEDIN_CLIENT_ID", "").strip()
+LINKEDIN_CLIENT_SECRET = os.environ.get("LINKEDIN_CLIENT_SECRET", "").strip()
+LINKEDIN_REDIRECT_URI = os.environ.get("LINKEDIN_REDIRECT_URI", "").strip()
+LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", "202607").strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+PGVECTOR_ENABLED = os.environ.get("PGVECTOR_ENABLED", "true").strip().lower() not in ("0", "false", "no")
+
+# Computer use (edith/computer_use/, edith/tools/computer_use.py) — local-machine-only
+# voice/text-triggered browser + native macOS app control. Perception is our own code
+# against PyObjC/Accessibility (edith/computer_use/accessibility.py); decisions come from
+# TypeSafe's real Jev model via OpenRouter's own TypeSafe-compatible endpoint
+# (edith/computer_use/typesafe_client.py), and free-text/key composition
+# (edith/computer_use/writer.py) also goes through OpenRouter — both reuse the existing
+# OPENROUTER_API_KEY/settings.api_key, no separate TypeSafe or Vercel account. Makes no
+# sense on the hosted Railway server (no display, no Brave, no Accessibility) — reports
+# "not configured" there same as every other optional integration, rather than crashing
+# startup.
+DEFAULT_COMPUTER_USE_WRITER_MODEL = "qwen/qwen3.7-flash"
+COMPUTER_USE_MAX_STEPS = int(os.environ.get("EDITH_COMPUTER_USE_MAX_STEPS", "12"))
+# Below this, the loop stops and reports rather than acting on a low-confidence guess —
+# same "confidence gates action" rule computer-use-jev's own DESIGN.md documents.
+COMPUTER_USE_CONFIDENCE_THRESHOLD = float(os.environ.get("EDITH_COMPUTER_USE_CONFIDENCE_THRESHOLD", "0.5"))
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -174,6 +212,19 @@ class Settings:
     vercel_analytics_token: str
     vercel_team_id: str
     github_token: str
+    linkedin_text_model: str
+    linkedin_fallback_text_model: str
+    linkedin_image_model: str
+    linkedin_fallback_image_model: str
+    linkedin_client_id: str
+    linkedin_client_secret: str
+    linkedin_redirect_uri: str
+    linkedin_version: str
+    database_url: str
+    pgvector_enabled: bool
+    computer_use_writer_model: str
+    computer_use_max_steps: int
+    computer_use_confidence_threshold: float
 
 
 def load_settings() -> Settings:
@@ -225,4 +276,19 @@ def load_settings() -> Settings:
         vercel_analytics_token=VERCEL_ANALYTICS_TOKEN,
         vercel_team_id=VERCEL_TEAM_ID,
         github_token=GITHUB_TOKEN,
+        linkedin_text_model=LINKEDIN_TEXT_MODEL,
+        linkedin_fallback_text_model=LINKEDIN_FALLBACK_TEXT_MODEL,
+        linkedin_image_model=LINKEDIN_IMAGE_MODEL,
+        linkedin_fallback_image_model=LINKEDIN_FALLBACK_IMAGE_MODEL,
+        linkedin_client_id=LINKEDIN_CLIENT_ID,
+        linkedin_client_secret=LINKEDIN_CLIENT_SECRET,
+        linkedin_redirect_uri=LINKEDIN_REDIRECT_URI,
+        linkedin_version=LINKEDIN_VERSION,
+        database_url=DATABASE_URL,
+        pgvector_enabled=PGVECTOR_ENABLED,
+        computer_use_writer_model=os.environ.get(
+            "EDITH_COMPUTER_USE_WRITER_MODEL", DEFAULT_COMPUTER_USE_WRITER_MODEL
+        ).strip(),
+        computer_use_max_steps=COMPUTER_USE_MAX_STEPS,
+        computer_use_confidence_threshold=COMPUTER_USE_CONFIDENCE_THRESHOLD,
     )

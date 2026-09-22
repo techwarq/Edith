@@ -283,6 +283,34 @@
   .todo-note { font-size: 12px; color: var(--text); opacity: 0.85; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); white-space: pre-wrap; }
   .todo-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
+  .job-config-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 12px 16px; margin-bottom: 16px; font-size: 13px;
+  }
+  .job-config-bar .job-cap { color: var(--muted); }
+  .job-config-toggle { display: flex; align-items: center; gap: 8px; }
+  .job-config-toggle button {
+    padding: 6px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border); cursor: pointer;
+    font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text);
+  }
+  .job-config-toggle button.on { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
+
+  .job-card { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 8px; }
+  .job-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .job-title { font-weight: 600; font-size: 14px; }
+  .job-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .job-status-pill { font-size: 11px; font-weight: 700; border-radius: var(--radius-pill); padding: 3px 10px; white-space: nowrap; flex-shrink: 0; }
+  .job-status-pill.discovered, .job-status-pill.drafted { background: var(--surface-2); color: var(--muted); }
+  .job-status-pill.queued_for_approval { background: var(--accent); color: var(--accent-contrast); }
+  .job-status-pill.sent, .job-status-pill.applied { background: #1e7e34; color: #fff; }
+  .job-status-pill.failed { background: #b02a37; color: #fff; }
+  .job-status-pill.skipped_duplicate { background: var(--surface-2); color: var(--muted); }
+  .job-draft { margin-top: 8px; }
+  .job-draft summary { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); cursor: pointer; }
+  .job-draft-body { font-size: 12px; color: var(--text); opacity: 0.9; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); white-space: pre-wrap; }
+  .job-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
   .new-goal-form { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .new-goal-form input {
     flex: 1; min-width: 150px; padding: 10px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border);
@@ -516,6 +544,8 @@
         <button class="tab-btn" data-tab="goals"><span class="tab-icon">🎯</span><span class="tab-label">Goals</span></button>
         <button class="tab-btn" data-tab="todos"><span class="tab-icon">✅</span><span class="tab-label">Todos</span></button>
         <button class="tab-btn" data-tab="insights"><span class="tab-icon">💡</span><span class="tab-label">Insights</span></button>
+        <button class="tab-btn" data-tab="jobs"><span class="tab-icon">💼</span><span class="tab-label">Jobs</span></button>
+        <button class="tab-btn" data-tab="content"><span class="tab-icon">🔥</span><span class="tab-label">Content</span></button>
         <button class="tab-btn" data-tab="mcp"><span class="tab-icon">🔌</span><span class="tab-label">Integrations</span></button>
       </div>
       <button id="theme-toggle" title="Toggle theme">🌙</button>
@@ -541,6 +571,8 @@
     <div id="goals-screen" class="screen"><div class="panel" id="goals-panel"></div></div>
     <div id="todos-screen" class="screen"><div class="panel" id="todos-panel"></div></div>
     <div id="insights-screen" class="screen"><div class="panel" id="insights-panel"></div></div>
+    <div id="jobs-screen" class="screen"><div class="panel" id="jobs-panel"></div></div>
+    <div id="content-screen" class="screen"><div class="panel" id="content-panel"></div></div>
     <div id="mcp-screen" class="screen"><div class="panel" id="mcp-panel"></div></div>
   </div>
 

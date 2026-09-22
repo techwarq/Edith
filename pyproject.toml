@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Personal AI agent — memory + chat core"
 requires-python = ">=3.11"
 dependencies = [
+    "psycopg2-binary>=2.9.0",
     "openai>=1.50.0",
     "google-genai>=1.0.0",
     "prompt_toolkit>=3.0.0",
@@ -22,6 +23,18 @@ dependencies = [
     "firebase-admin>=6.5.0",
     "requests>=2.31.0",
     "mcp>=1.0.0",
+    "pypdf>=4.0.0",
+    # Computer use (edith/computer_use/) — macOS-only Accessibility/screen-capture/OCR
+    # bindings. Markers keep these off the hosted Railway (Linux) install; the tool itself
+    # reports "not available" there rather than needing them.
+    "pyobjc-framework-ApplicationServices>=12.2.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=12.2.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision>=12.2.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=12.2.2; sys_platform == 'darwin'",
+    # Streaming voice command loop (edith/computer_use/speech_stream.py) — on-device
+    # continuous speech recognition (Speech) fed by a live mic tap (AVFoundation).
+    "pyobjc-framework-Speech>=12.2.2; sys_platform == 'darwin'",
+    "pyobjc-framework-AVFoundation>=12.2.2; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
@@ -35,4 +48,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["edith", "edith.llm", "edith.memory", "edith.tools", "edith.google", "edith.temporal"]
+packages = ["edith", "edith.llm", "edith.memory", "edith.tools", "edith.google", "edith.temporal", "edith.job_applications", "edith.linkedin", "edith.computer_use"]

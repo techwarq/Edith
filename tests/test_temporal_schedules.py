@@ -8,7 +8,7 @@ import asyncio
 import pytest
 from temporalio.service import RPCError, RPCStatusCode
 
-from edith.config import NIGHTLY_REFLECTION_SCHEDULE_ID
+from edith.config import JOB_SEARCH_SCHEDULE_ID, NIGHTLY_REFLECTION_SCHEDULE_ID
 from edith.temporal import schedules
 
 
@@ -170,3 +170,28 @@ def test_start_deep_research_ids_are_unique_per_call():
     asyncio.run(schedules.start_deep_research(client, 1.0, 2.0))
     assert len(client.started_workflows) == 2
     assert all(i.startswith(schedules.DEEP_RESEARCH_WORKFLOW_PREFIX) for i in client.started_workflows)
+
+
+def test_ensure_job_search_schedule_creates_once():
+    client = FakeClient()
+    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
+    assert JOB_SEARCH_SCHEDULE_ID in client.created_schedules
+
+    existing = client.created_schedules[JOB_SEARCH_SCHEDULE_ID]
+    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
+    assert client.created_schedules[JOB_SEARCH_SCHEDULE_ID] is existing
+
+
+def test_cancel_job_search_schedule_when_not_enabled():
+    client = FakeClient()
+    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is False
+
+
+def test_enable_then_disable_job_search_schedule():
+    client = FakeClient()
+    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
+    assert JOB_SEARCH_SCHEDULE_ID in client.created_schedules
+
+    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is True
+    assert JOB_SEARCH_SCHEDULE_ID not in client.created_schedules
+    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is False

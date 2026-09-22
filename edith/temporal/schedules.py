@@ -18,6 +18,9 @@ from temporalio.client import (
 from temporalio.service import RPCError, RPCStatusCode
 
 from edith.config import (
+    JOB_SEARCH_CRON,
+    JOB_SEARCH_SCHEDULE_ID,
+    JOBS_DAILY_CAP,
     NIGHTLY_EVALS_CRON,
     NIGHTLY_EVALS_SCHEDULE_ID,
     NIGHTLY_REFLECTION_CRON,
@@ -45,6 +48,46 @@ This is your nightly reflection run — nobody is watching this live, so write f
 
 Your final reply IS the digest — it gets saved for me to read later, so make it self-contained
 and skip pleasantries/greetings.
+"""
+
+
+def _job_search_instruction(leads_per_run: int) -> str:
+    return f"""\
+This is a scheduled job-application run — nobody is watching live except possibly during the
+first monitored test batch (autonomous mode may still be off, in which case sends/submits will
+queue for /approve instead of going out directly — that's expected and correct).
+
+USER PROFILE: Sonali Nayak, Full Stack / AI Engineer. Stack: Python, Node.js, JavaScript,
+React.js, Next.js, TypeScript, Cloud Run (GCP), Redis, BullMQ, Postgres, MongoDB, RAG, LLM APIs,
+Vector DBs. Target roles: AI Engineer, Backend Engineer, Frontend Engineer, Full-stack Engineer.
+REMOTE-ONLY — skip any on-site/hybrid or location-locked roles unless explicitly remote-worldwide
+or remote-India. Prefer 10-30 person early but well-funded startup teams (VC-backed).
+
+1. Call list_job_applications status="sent" and also status="applied", and count how many have
+   a sent_at from today. If that count is already at or above {JOBS_DAILY_CAP}, stop here and
+   say so briefly — don't discover or draft anything else this run.
+2. Call list_job_sources for the VC portfolio/jobs-board pages to scan. Occasionally (not every
+   run) also run web_search for 1-2 more VC/accelerator portfolio jobs boards (e.g. "<firm> jobs
+   board" — many are Consider/Getro-powered pages like jobs.a16z.com, jobs.sequoiacap.com,
+   which browse_url renders fine) and track_job_source anything promising. Cover: a16z, YC,
+   Sequoia, Accel, Lightspeed, Greylock, First Round, 500 Global, Techstars, Work at a Startup.
+3. For each source, browse_url it. From the page text, identify companies/roles matching:
+   AI Engineer / Backend / Frontend / Full-stack with Python/Node/React/Cloud Run keywords,
+   REMOTE-ONLY. Read each listing's location text carefully — skip non-remote. Prefer small
+   teams (hunter_company_enrichment to check ~10-30 employees + funded). For each candidate,
+   call check_company_applied first and skip anything already in flight, then record_job_lead
+   for genuinely new ones.
+4. For up to {leads_per_run} of today's newly recorded leads: find a contact email via
+   hunter_domain_search/hunter_email_finder + hunter_email_verifier if the posting's primary CTA
+   isn't a dedicated apply form; otherwise the channel is web_form (browse_url the apply page to
+   see its fields first). ALSO capture the founder/hiring-manager for LinkedIn semi-auto outreach:
+   call add_outreach_prospect with name, linkedin_url (from web_search/monid or company team page),
+   company, role, and context. Draft a short personalized LinkedIn connect note via
+   draft_outreach_message (kind="linkedin_dm", <250 chars, reference their product + Sonali's
+   Nagent AI / RAG / MCP work). Draft the email via draft_job_application, then
+   send_job_application_email or submit_job_application_form.
+5. Keep your final reply a short summary of what happened this run (companies, channel, status,
+   + LinkedIn prospects queued) — it's read later via the Jobs tab/`/jobs`, not this chat.
 """
 
 
@@ -106,6 +149,33 @@ async def cancel_nightly_reflection(client: Client) -> bool:
     if not await _schedule_exists(client, NIGHTLY_REFLECTION_SCHEDULE_ID):
         return False
     await client.get_schedule_handle(NIGHTLY_REFLECTION_SCHEDULE_ID).delete()
+    return True
+
+
+async def ensure_job_search_schedule(client: Client, cron: str = JOB_SEARCH_CRON, leads_per_run: int = 3) -> None:
+    """Idempotent, opt-in (see enable_jobs_pipeline) — same reasoning as
+    ensure_nightly_reflection_schedule. Fires several times across the day
+    (default cron) rather than once, so sends trickle instead of bursting."""
+    if await _schedule_exists(client, JOB_SEARCH_SCHEDULE_ID):
+        return
+    await client.create_schedule(
+        JOB_SEARCH_SCHEDULE_ID,
+        Schedule(
+            action=ScheduleActionStartWorkflow(
+                RunAgentInstructionWorkflow.run,
+                _job_search_instruction(leads_per_run),
+                id=f"{JOB_SEARCH_SCHEDULE_ID}-run",
+                task_queue=TEMPORAL_TASK_QUEUE,
+            ),
+            spec=ScheduleSpec(cron_expressions=[cron]),
+        ),
+    )
+
+
+async def cancel_job_search_schedule(client: Client) -> bool:
+    if not await _schedule_exists(client, JOB_SEARCH_SCHEDULE_ID):
+        return False
+    await client.get_schedule_handle(JOB_SEARCH_SCHEDULE_ID).delete()
     return True
 
 

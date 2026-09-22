@@ -11,7 +11,13 @@ interactive calls, so a fresh event loop each time is fine.
 import asyncio
 from datetime import datetime, timezone
 
-from edith.config import DEEP_RESEARCH_BUDGET_USD, DEEP_RESEARCH_SLEEP_HOURS, Settings
+from edith.config import (
+    DEEP_RESEARCH_BUDGET_USD,
+    DEEP_RESEARCH_SLEEP_HOURS,
+    JOB_SEARCH_CRON,
+    JOB_SEARCH_LEADS_PER_RUN,
+    Settings,
+)
 from edith.temporal import schedules
 from edith.temporal.client import TemporalNotConfigured, get_client
 from edith.tools.registry import ToolRegistry
@@ -87,6 +93,32 @@ def register(registry: ToolRegistry, settings: Settings) -> None:
         except TemporalNotConfigured as e:
             return f"ERROR: {e}"
         return "Nightly reflection disabled." if disabled else "Nightly reflection wasn't enabled."
+
+    def enable_jobs_pipeline() -> str:
+        async def _do() -> None:
+            client = await get_client(settings)
+            await schedules.ensure_job_search_schedule(client, JOB_SEARCH_CRON, JOB_SEARCH_LEADS_PER_RUN)
+
+        try:
+            asyncio.run(_do())
+        except TemporalNotConfigured as e:
+            return f"ERROR: {e}"
+        return (
+            f"Job-search pipeline enabled (cron: {JOB_SEARCH_CRON}, ~{JOB_SEARCH_LEADS_PER_RUN} leads/run). "
+            "A Temporal worker process must be running for it to actually fire. If jobs_autonomous_enabled "
+            "is off, sends/submits will queue for /approve instead of going out directly."
+        )
+
+    def disable_jobs_pipeline() -> str:
+        async def _do() -> bool:
+            client = await get_client(settings)
+            return await schedules.cancel_job_search_schedule(client)
+
+        try:
+            disabled = asyncio.run(_do())
+        except TemporalNotConfigured as e:
+            return f"ERROR: {e}"
+        return "Job-search pipeline disabled." if disabled else "Job-search pipeline wasn't enabled."
 
     def start_deep_research(start_delay_minutes: int = 0) -> str:
         async def _do() -> None:
@@ -226,6 +258,37 @@ def register(registry: ToolRegistry, settings: Settings) -> None:
             },
         },
         disable_nightly_reflection,
+    )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "enable_jobs_pipeline",
+                "description": (
+                    "Turn on the autonomous job-application pipeline: several times a day it scans "
+                    "tracked VC/accelerator job sources (a16z, YC, Sequoia, Accel, Lightspeed, etc), "
+                    "records/drafts/applies to new REMOTE AI Engineer / Backend / Frontend / "
+                    "Full-stack leads (Python/Node/React/Cloud Run, 10-30 person well-funded teams) "
+                    "up to the daily cap, plus queues LinkedIn semi-auto prospects. Off by default — only enable "
+                    "after the user has reviewed a monitored test batch (via schedule_once)."
+                ),
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        enable_jobs_pipeline,
+    )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "disable_jobs_pipeline",
+                "description": "Turn off the recurring job-application pipeline.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        disable_jobs_pipeline,
     )
 
     registry.register(

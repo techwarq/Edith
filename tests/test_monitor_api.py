@@ -38,6 +38,19 @@ def _settings(tmp_path, **overrides):
         vercel_analytics_token="",
         vercel_team_id="",
         github_token="",
+        linkedin_text_model="ltm",
+        linkedin_fallback_text_model="lftm",
+        linkedin_image_model="lim",
+        linkedin_fallback_image_model="lfim",
+        linkedin_client_id="",
+        linkedin_client_secret="",
+        linkedin_redirect_uri="",
+        linkedin_version="202607",
+        database_url="",
+        pgvector_enabled=True,
+        computer_use_writer_model="cuwm",
+        computer_use_max_steps=12,
+        computer_use_confidence_threshold=0.5,
     )
     base.update(overrides)
     return Settings(**base)

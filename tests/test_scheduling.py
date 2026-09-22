@@ -208,3 +208,43 @@ def test_disable_nightly_reflection_not_enabled(registry, monkeypatch):
     monkeypatch.setattr(scheduling.schedules, "cancel_nightly_reflection", fake_cancel)
 
     assert registry.dispatch("disable_nightly_reflection", {}) == "Nightly reflection wasn't enabled."
+
+
+def test_enable_jobs_pipeline_success(registry, monkeypatch):
+    calls = []
+
+    async def fake_ensure(client, cron, leads_per_run):
+        calls.append((client, cron, leads_per_run))
+
+    monkeypatch.setattr(scheduling, "get_client", _fake_get_client)
+    monkeypatch.setattr(scheduling.schedules, "ensure_job_search_schedule", fake_ensure)
+
+    result = registry.dispatch("enable_jobs_pipeline", {})
+    assert "Job-search pipeline enabled" in result
+    assert calls[0][0] == "fake-client"
+
+
+def test_enable_jobs_pipeline_not_configured(registry, monkeypatch):
+    monkeypatch.setattr(scheduling, "get_client", _raise_not_configured)
+    result = registry.dispatch("enable_jobs_pipeline", {})
+    assert result.startswith("ERROR:")
+
+
+def test_disable_jobs_pipeline_found(registry, monkeypatch):
+    async def fake_cancel(client):
+        return True
+
+    monkeypatch.setattr(scheduling, "get_client", _fake_get_client)
+    monkeypatch.setattr(scheduling.schedules, "cancel_job_search_schedule", fake_cancel)
+
+    assert registry.dispatch("disable_jobs_pipeline", {}) == "Job-search pipeline disabled."
+
+
+def test_disable_jobs_pipeline_not_enabled(registry, monkeypatch):
+    async def fake_cancel(client):
+        return False
+
+    monkeypatch.setattr(scheduling, "get_client", _fake_get_client)
+    monkeypatch.setattr(scheduling.schedules, "cancel_job_search_schedule", fake_cancel)
+
+    assert registry.dispatch("disable_jobs_pipeline", {}) == "Job-search pipeline wasn't enabled."
