@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from edith import voice
-from edith.voice import VoiceError
+from edith.integrations import voice
+from edith.integrations.voice import VoiceError
 
 
 # ---------------------------------------------------------------------------

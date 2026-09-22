@@ -28,7 +28,7 @@ from edith.config import BROWSERBASE_API_KEY, BROWSERBASE_PROJECT_ID
 from edith.memory import store
 from edith.tools.registry import ToolRegistry
 
-logger = logging.getLogger("edith.browse")
+logger = logging.getLogger("edith.integrations.browse")
 
 MAX_PAGE_TEXT_CHARS = 4000
 MAX_RESULT_TEXT_CHARS = 1000

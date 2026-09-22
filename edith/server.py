@@ -29,7 +29,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from edith import voice
+from edith.integrations import voice
 from edith.bootstrap import build_app_context, resolve_session
 from edith.commands import handle_command
 from edith.config import WHATSAPP_QR_PATH, load_settings
@@ -43,7 +43,7 @@ from edith.observability import api as observability_api
 from edith.observability.seed_evals import seed_default_evals
 from edith.temporal import api as deep_research_api
 from edith.todos import api as todos_api
-from edith.voice import VoiceError
+from edith.integrations.voice import VoiceError
 from edith.linkedin import api as linkedin_api
 from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
 from edith.computer_use.voice_loop import SITES, VoiceTickSession

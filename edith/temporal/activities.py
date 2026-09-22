@@ -15,7 +15,7 @@ from edith.agent import Agent
 from edith.config import Settings, load_settings
 from edith.llm.client import make_client
 from edith.memory import db, store, vectors
-from edith import push
+from edith.integrations import push
 
 logger = logging.getLogger("edith.temporal.activities")
 

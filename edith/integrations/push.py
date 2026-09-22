@@ -17,7 +17,7 @@ from firebase_admin import credentials, messaging
 from edith.config import Settings
 from edith.memory import store
 
-logger = logging.getLogger("edith.push")
+logger = logging.getLogger("edith.integrations.push")
 
 _app: firebase_admin.App | None = None
 

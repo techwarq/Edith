@@ -6,7 +6,7 @@ verification section for why they can't be driven from a sandboxed shell.
 
 import pytest
 
-from edith import whatsapp
+from edith.integrations import whatsapp
 from edith.memory import db, store
 from edith.tools.registry import ToolRegistry
 

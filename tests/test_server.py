@@ -8,7 +8,7 @@ API calls happen in the test itself.
 """
 
 import edith.server as server
-from edith.voice import VoiceError
+from edith.integrations.voice import VoiceError
 
 
 class _FakeStore:

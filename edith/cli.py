@@ -12,12 +12,12 @@ import sys
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 
-from edith import voice
+from edith.integrations import voice
 from edith.bootstrap import WELCOME, build_app_context, resolve_session
 from edith.commands import handle_command
 from edith.config import Settings, load_settings
 from edith.memory import db, store
-from edith.voice import VoiceError
+from edith.integrations.voice import VoiceError
 
 
 def _setup_logging(log_path) -> None:

@@ -46,7 +46,7 @@ from edith.config import (
 from edith.memory import store
 from edith.tools.registry import ToolRegistry
 
-logger = logging.getLogger("edith.whatsapp")
+logger = logging.getLogger("edith.integrations.whatsapp")
 
 NOT_CONNECTED = "WhatsApp not connected — run /whatsapp login first."
 WHATSAPP_URL = "https://web.whatsapp.com"

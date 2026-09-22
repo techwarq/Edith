@@ -11,7 +11,7 @@ from google import genai
 from qdrant_client import QdrantClient
 
 from edith.agent import Agent
-from edith import browse
+from edith.integrations import browse
 from edith.config import Settings
 from edith.google import auth as google_auth
 from edith.google import calendar as google_calendar
@@ -38,7 +38,7 @@ from edith.tools import todos as todos_tool
 from edith.tools import vercel as vercel_tool
 from edith.tools import youtube as youtube_tool
 from edith.tools.registry import ToolRegistry
-from edith import whatsapp
+from edith.integrations import whatsapp
 
 WELCOME = (
     "Edith is online. I don't know anything about you yet — tell me about "

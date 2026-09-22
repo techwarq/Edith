@@ -6,7 +6,7 @@ for the same reasoning applied to WhatsApp automation.
 
 import pytest
 
-from edith import browse
+from edith.integrations import browse
 from edith.memory import db, store
 from edith.tools.registry import ToolRegistry
 

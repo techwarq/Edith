@@ -7,7 +7,7 @@ push). Thin wrapper around edith/push.py.
 import sqlite3
 
 from edith.config import Settings
-from edith.push import send_push_notification as _send_push_notification
+from edith.integrations.push import send_push_notification as _send_push_notification
 from edith.tools.registry import ToolRegistry
 
 

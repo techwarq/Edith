@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from edith import browse
+from edith.integrations import browse
 from edith.google import gmail as google_gmail
 from edith.memory import db, job_applications_store as jobs_store, store
 from edith.tools import job_applications as job_applications_tool

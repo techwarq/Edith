@@ -29,7 +29,7 @@ from typing import Any, Optional
 
 from google import genai
 
-from edith import browse
+from edith.integrations import browse
 from edith.google import auth as google_auth
 from edith.google import gmail as google_gmail
 from edith.memory import job_applications_store as jobs_store

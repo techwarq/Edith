@@ -48,4 +48,21 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["edith", "edith.llm", "edith.memory", "edith.tools", "edith.google", "edith.temporal", "edith.job_applications", "edith.linkedin", "edith.computer_use"]
+packages = [
+    "edith",
+    "edith.computer_use",
+    "edith.goals",
+    "edith.google",
+    "edith.integrations",
+    "edith.job_applications",
+    "edith.linkedin",
+    "edith.llm",
+    "edith.mcp",
+    "edith.memory",
+    "edith.monitor",
+    "edith.observability",
+    "edith.temporal",
+    "edith.todos",
+    "edith.tools",
+    "edith.web",
+]

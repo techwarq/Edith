@@ -1,9 +1,9 @@
 """Tests for edith/push.py. Never touches real Firebase — firebase_admin.messaging.send
-and edith.push._get_app are monkeypatched with fakes."""
+and edith.integrations.push._get_app are monkeypatched with fakes."""
 
 import pytest
 
-from edith import push
+from edith.integrations import push
 from edith.memory import db, store
 
 
