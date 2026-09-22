@@ -26,7 +26,7 @@ from typing import Optional
 
 import requests
 
-logger = logging.getLogger("edith.linkedin.auth")
+logger = logging.getLogger("edith.integrations.linkedin.auth")
 
 # LinkedIn OAuth endpoints
 AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
@@ -205,7 +205,7 @@ def fetch_organization_acls(access_token: str) -> list[dict]:
 
 def store_token_for_author(conn, token_data: dict, profile: dict, access_token: str) -> list[dict]:
     """Upsert personal author + any org authors. Returns list of created authors."""
-    from edith.linkedin.store import upsert_author
+    from edith.integrations.linkedin.store import upsert_author
     expires_in = int(token_data.get("expires_in", 5184000))  # default 60 days
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
     scopes = token_data.get("scope", "")

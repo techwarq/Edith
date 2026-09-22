@@ -12,7 +12,7 @@ sequence of tool calls (browse_url, web_search, hunter_*, this module) —
 these functions are composable primitives, not a bespoke per-site scraper.
 
 Autonomy: send_email/fill_form's pending_action + /approve gate (see
-edith/google/gmail.py, edith/browse.py) is untouched for all normal chat use.
+edith/integrations/google/gmail.py, edith/integrations/browse.py) is untouched for all normal chat use.
 send_job_application_email/submit_job_application_form below check a
 separate opt-in flag (jobs_autonomous_enabled, off by default) and either
 queue through that same gate (flag off) or call the existing executors
@@ -30,8 +30,8 @@ from typing import Any, Optional
 from google import genai
 
 from edith.integrations import browse
-from edith.google import auth as google_auth
-from edith.google import gmail as google_gmail
+from edith.integrations.google import auth as google_auth
+from edith.integrations.google import gmail as google_gmail
 from edith.memory import job_applications_store as jobs_store
 from edith.memory import store
 from edith.tools.registry import ToolRegistry

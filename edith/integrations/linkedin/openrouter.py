@@ -13,7 +13,7 @@ import requests
 
 from edith.config import OPENROUTER_BASE_URL
 
-logger = logging.getLogger("edith.linkedin.openrouter")
+logger = logging.getLogger("edith.integrations.linkedin.openrouter")
 
 DEFAULT_TEXT_MODEL = os.environ.get("LINKEDIN_TEXT_MODEL", "qwen/qwen3.7-flash")
 FALLBACK_TEXT_MODEL = os.environ.get("LINKEDIN_FALLBACK_TEXT_MODEL", "qwen/qwen3-30b-a3b-instruct-2507")

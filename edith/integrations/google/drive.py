@@ -12,11 +12,11 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
-from edith.google.auth import get_credentials
+from edith.integrations.google.auth import get_credentials
 from edith.memory import store
 from edith.tools.registry import ToolRegistry
 
-logger = logging.getLogger("edith.google.drive")
+logger = logging.getLogger("edith.integrations.google.drive")
 
 NOT_CONNECTED = "Google account not connected — run /google login first."
 MAX_READ_CHARS = 5000

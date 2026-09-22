@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from edith.bootstrap import EXECUTORS
 from edith.config import JOBS_DAILY_CAP
-from edith.google import auth as google_auth
+from edith.integrations.google import auth as google_auth
 from edith.memory import job_applications_store as jobs_store
 from edith.memory import store
 from edith.tools.growth.job_applications import AUTONOMOUS_KEY, JOBS_CONFIG_CATEGORY

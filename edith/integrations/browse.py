@@ -4,7 +4,7 @@ browse_url is a direct read tool (like drive_search/gmail_search) — inherently
 live-only, no meaningful way to unit test without a real browser, same as
 edith/whatsapp.py's read tools. fill_form never touches a live browser itself;
 it only queues a pending_action (same hard-gate pattern as
-edith/google/gmail.py's send_email) — execute_submit_form is never reachable
+edith/integrations/google/gmail.py's send_email) — execute_submit_form is never reachable
 from the LLM tool loop, only from cli.py's /approve, since submitting a form
 to a third-party site is often irreversible (job application, contact form,
 purchase, etc.).

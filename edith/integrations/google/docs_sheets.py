@@ -19,10 +19,10 @@ import sqlite3
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from edith.google.auth import get_credentials
+from edith.integrations.google.auth import get_credentials
 from edith.tools.registry import ToolRegistry
 
-logger = logging.getLogger("edith.google.docs_sheets")
+logger = logging.getLogger("edith.integrations.google.docs_sheets")
 
 NOT_CONNECTED = "Google account not connected — run /google login first."
 MAX_READ_CHARS = 5000

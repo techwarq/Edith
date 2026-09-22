@@ -5,9 +5,9 @@ and one propose/executor test per service, using fake API service objects
 
 import pytest
 
-from edith.google import calendar as gcalendar
-from edith.google import drive as gdrive
-from edith.google import gmail as ggmail
+from edith.integrations.google import calendar as gcalendar
+from edith.integrations.google import drive as gdrive
+from edith.integrations.google import gmail as ggmail
 from edith.memory import db, store
 from edith.tools.registry import ToolRegistry
 

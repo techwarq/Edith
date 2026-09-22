@@ -10,11 +10,11 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from edith.google.auth import get_credentials
+from edith.integrations.google.auth import get_credentials
 from edith.memory import store
 from edith.tools.registry import ToolRegistry
 
-logger = logging.getLogger("edith.google.calendar")
+logger = logging.getLogger("edith.integrations.google.calendar")
 
 NOT_CONNECTED = "Google account not connected — run /google login first."
 

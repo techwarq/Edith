@@ -214,7 +214,7 @@ def delete_device_token(conn: sqlite3.Connection, token: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# pending_actions (hard gate for risky tool actions — see edith/google/*)
+# pending_actions (hard gate for risky tool actions — see edith/integrations/google/*)
 # ---------------------------------------------------------------------------
 
 def queue_pending_action(

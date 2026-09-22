@@ -2,7 +2,7 @@
 
 Reads and sends are on-demand only — no polling, no auto-reply, no
 always-listening. Sending is gated through pending_actions (same hard-gate
-pattern as edith/google/gmail.py's send_email) — execute_send_whatsapp_message
+pattern as edith/integrations/google/gmail.py's send_email) — execute_send_whatsapp_message
 is never reachable from the LLM tool loop, only from cli.py's /approve.
 
 Selectors: WhatsApp Web's DOM is undocumented and changes without notice.

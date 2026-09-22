@@ -10,7 +10,7 @@ import os
 import uuid
 from typing import Optional
 
-logger = logging.getLogger("edith.linkedin.pgvector")
+logger = logging.getLogger("edith.integrations.linkedin.pgvector")
 
 PGVECTOR_DIM = 3072
 PGVECTOR_TABLE = "linkedin_memory"

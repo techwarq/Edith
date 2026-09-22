@@ -13,11 +13,11 @@ from qdrant_client import QdrantClient
 from edith.agent import Agent
 from edith.integrations import browse
 from edith.config import Settings
-from edith.google import auth as google_auth
-from edith.google import calendar as google_calendar
-from edith.google import docs_sheets as google_docs_sheets
-from edith.google import drive as google_drive
-from edith.google import gmail as google_gmail
+from edith.integrations.google import auth as google_auth
+from edith.integrations.google import calendar as google_calendar
+from edith.integrations.google import docs_sheets as google_docs_sheets
+from edith.integrations.google import drive as google_drive
+from edith.integrations.google import gmail as google_gmail
 from edith.llm.client import make_client
 from edith.memory import db, store, vectors
 from edith.tools.growth import hunter as hunter_tool

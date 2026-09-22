@@ -17,8 +17,8 @@ import sqlite3
 from edith.agent import Agent
 from edith.bootstrap import EXECUTORS
 from edith.config import Settings
-from edith.google import auth as google_auth
-from edith.google.auth import GoogleAuthError
+from edith.integrations.google import auth as google_auth
+from edith.integrations.google.auth import GoogleAuthError
 from edith.memory import search as memory_search
 from edith.memory import store
 from edith.tools.productivity.projects import WORKING_ON_CATEGORY

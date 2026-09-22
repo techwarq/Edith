@@ -13,7 +13,7 @@ import time
 import requests
 from typing import Optional
 
-logger = logging.getLogger("edith.linkedin.client")
+logger = logging.getLogger("edith.integrations.linkedin.client")
 
 LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", "202607")
 POSTS_URL = "https://api.linkedin.com/rest/posts"

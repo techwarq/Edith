@@ -13,14 +13,14 @@ import os
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from edith.linkedin import store as lstore
-from edith.linkedin import pgvector as pgmem
-from edith.linkedin.grower import generate_best_post, save_generated_as_post, generate_calendar_plan
-from edith.linkedin.openrouter import generate_image
-from edith.linkedin.prompts import refine_image_prompt
-from edith.linkedin import auth as linkedin_auth
+from edith.integrations.linkedin import store as lstore
+from edith.integrations.linkedin import pgvector as pgmem
+from edith.integrations.linkedin.grower import generate_best_post, save_generated_as_post, generate_calendar_plan
+from edith.integrations.linkedin.openrouter import generate_image
+from edith.integrations.linkedin.prompts import refine_image_prompt
+from edith.integrations.linkedin import auth as linkedin_auth
 
-logger = logging.getLogger("edith.linkedin.api")
+logger = logging.getLogger("edith.integrations.linkedin.api")
 
 def _unauthorized(body: dict, api_token: str) -> JSONResponse | None:
     if not api_token or body.get("token") != api_token:
@@ -357,7 +357,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         if (err := _unauthorized(body, api_token)) is not None:
             return err
         def _op():
-            from edith.linkedin.linkedin_client import create_post_for_stored
+            from edith.integrations.linkedin.linkedin_client import create_post_for_stored
             return create_post_for_stored(conn, post_id)
         try:
             result = await asyncio.to_thread(_op)
@@ -377,7 +377,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         if not author_urn or not commentary:
             return JSONResponse({"error":"author_urn and commentary required"}, status_code=400)
         def _op():
-            from edith.linkedin.linkedin_client import get_access_token, register_image, create_post
+            from edith.integrations.linkedin.linkedin_client import get_access_token, register_image, create_post
             # optionally register image
             image_urn = None
             if image_b64:
@@ -405,7 +405,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         since_days = int(request.query_params.get("since_days","7") or 7)
         since_days = max(1, min(since_days, 30))
         def _op():
-            from edith.linkedin.github_digest import build_digest
+            from edith.integrations.linkedin.github_digest import build_digest
             return build_digest(since_days=since_days)
         try:
             data = await asyncio.to_thread(_op)
@@ -425,7 +425,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         if not author_urn:
             return JSONResponse({"error":"author_urn required (your linkedin personal urn)"}, status_code=400)
         def _op():
-            from edith.linkedin.daily import generate_daily_queue
+            from edith.integrations.linkedin.daily import generate_daily_queue
             return generate_daily_queue(conn, author_urn, author_urn_x=author_urn_x, since_days=since_days)
         try:
             data = await asyncio.to_thread(_op)
@@ -443,7 +443,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
             return JSONResponse({"error":"unauthorized"}, status_code=401)
         author_urn = request.query_params.get("author_urn")
         def _op():
-            from edith.linkedin.daily import get_todays_queue
+            from edith.integrations.linkedin.daily import get_todays_queue
             return get_todays_queue(conn, author_urn)
         data = await asyncio.to_thread(_op)
         return JSONResponse({"posts": data})
@@ -459,7 +459,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         if not author_urn:
             return JSONResponse({"error":"author_urn required"}, status_code=400)
         def _op():
-            from edith.linkedin.daily import generate_week_plan
+            from edith.integrations.linkedin.daily import generate_week_plan
             return generate_week_plan(conn, author_urn, author_urn_x=author_urn_x, start_date=start_date)
         try:
             data = await asyncio.to_thread(_op)
@@ -478,7 +478,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         author_urn = request.query_params.get("author_urn")
         start = request.query_params.get("start")
         def _op():
-            from edith.linkedin.daily import get_week_plan
+            from edith.integrations.linkedin.daily import get_week_plan
             return get_week_plan(conn, author_urn, start=start)
         data = await asyncio.to_thread(_op)
         return JSONResponse({"days": data})

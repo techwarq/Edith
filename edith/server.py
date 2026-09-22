@@ -44,7 +44,7 @@ from edith.observability.seed_evals import seed_default_evals
 from edith.temporal import api as deep_research_api
 from edith.todos import api as todos_api
 from edith.integrations.voice import VoiceError
-from edith.linkedin import api as linkedin_api
+from edith.integrations.linkedin import api as linkedin_api
 from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
 from edith.computer_use.voice_loop import SITES, VoiceTickSession
 from edith.computer_use.writer import make_writer_client

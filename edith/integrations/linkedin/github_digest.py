@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 import requests
 
-logger = logging.getLogger("edith.linkedin.github_digest")
+logger = logging.getLogger("edith.integrations.linkedin.github_digest")
 
 BASE = "https://api.github.com"
 TIMEOUT = 15

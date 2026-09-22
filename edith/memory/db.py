@@ -365,7 +365,7 @@ class DatabaseError(RuntimeError):
 
 def _ensure_linkedin_schema(conn: sqlite3.Connection) -> None:
     try:
-        from edith.linkedin.store import LINKEDIN_SCHEMA
+        from edith.integrations.linkedin.store import LINKEDIN_SCHEMA
 
         conn.executescript(LINKEDIN_SCHEMA)
     except Exception:

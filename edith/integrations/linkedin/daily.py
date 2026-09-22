@@ -15,11 +15,11 @@ import logging
 from datetime import datetime, timezone
 from textwrap import dedent
 
-from edith.linkedin import store as lstore
-from edith.linkedin.github_digest import build_digest
-from edith.linkedin.openrouter import generate_text_fallback
+from edith.integrations.linkedin import store as lstore
+from edith.integrations.linkedin.github_digest import build_digest
+from edith.integrations.linkedin.openrouter import generate_text_fallback
 
-logger = logging.getLogger("edith.linkedin.daily")
+logger = logging.getLogger("edith.integrations.linkedin.daily")
 
 SLOTS = [
     {

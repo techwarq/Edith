@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from edith.integrations import browse
-from edith.google import gmail as google_gmail
+from edith.integrations.google import gmail as google_gmail
 from edith.memory import db, job_applications_store as jobs_store, store
 from edith.tools.growth import job_applications as job_applications_tool
 from edith.tools.registry import ToolRegistry
@@ -144,7 +144,7 @@ def test_send_job_application_email_sends_directly_when_autonomous(tmp_path, mon
     r.dispatch("enable_jobs_autonomous_mode", {})
 
     monkeypatch.setattr(google_gmail, "execute_send_email", lambda creds, args: f"Email sent to {args['to']}.")
-    monkeypatch.setattr("edith.google.auth.get_credentials", lambda: object())
+    monkeypatch.setattr("edith.integrations.google.auth.get_credentials", lambda: object())
 
     result = r.dispatch("send_job_application_email", {
         "application_id": 1, "to": "founder@acme.com", "subject": "Hi", "body": "Hello",
@@ -164,7 +164,7 @@ def test_send_job_application_email_marks_failed_on_executor_error(tmp_path, mon
     r.dispatch("enable_jobs_autonomous_mode", {})
 
     monkeypatch.setattr(google_gmail, "execute_send_email", lambda creds, args: "ERROR: sending email failed: boom")
-    monkeypatch.setattr("edith.google.auth.get_credentials", lambda: object())
+    monkeypatch.setattr("edith.integrations.google.auth.get_credentials", lambda: object())
 
     r.dispatch("send_job_application_email", {"application_id": 1, "to": "x@acme.com", "subject": "Hi", "body": "Hello"})
 

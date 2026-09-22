@@ -8,7 +8,7 @@ import pytest
 
 from edith import commands
 from edith.config import Settings
-from edith.google.auth import GoogleAuthError
+from edith.integrations.google.auth import GoogleAuthError
 from edith.memory import db, store
 
 

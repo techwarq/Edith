@@ -18,7 +18,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 from edith.config import GOOGLE_CLIENT_SECRET_PATH, GOOGLE_SCOPES, GOOGLE_TOKEN_PATH
 
-logger = logging.getLogger("edith.google.auth")
+logger = logging.getLogger("edith.integrations.google.auth")
 
 
 class GoogleAuthError(Exception):

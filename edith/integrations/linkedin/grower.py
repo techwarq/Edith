@@ -5,12 +5,12 @@ Phase 2 core: generate the single best post for personal OR company, grounded in
 import logging
 from typing import Any
 
-from edith.linkedin import store
-from edith.linkedin import pgvector as pgmem
-from edith.linkedin.prompts import build_generation_messages, build_planner_messages, refine_image_prompt
-from edith.linkedin.openrouter import generate_text_fallback, generate_image, plan_calendar
+from edith.integrations.linkedin import store
+from edith.integrations.linkedin import pgvector as pgmem
+from edith.integrations.linkedin.prompts import build_generation_messages, build_planner_messages, refine_image_prompt
+from edith.integrations.linkedin.openrouter import generate_text_fallback, generate_image, plan_calendar
 
-logger = logging.getLogger("edith.linkedin.grower")
+logger = logging.getLogger("edith.integrations.linkedin.grower")
 
 # ---------- helpers ----------
 def _load_context(conn, author_urn: str) -> tuple[dict, list[dict], list[dict], list[dict]]:
@@ -165,7 +165,7 @@ def save_generated_as_post(
     )
     # also store in pgvector for future learning (text for retrieval)
     try:
-        from edith.linkedin.pgvector import pg_upsert
+        from edith.integrations.linkedin.pgvector import pg_upsert
         # need genai_client — we don't have it here, so writer must call separately if available
         # we store via direct fallback: if pgvector enabled but no client, we skip (best effort)
         pass

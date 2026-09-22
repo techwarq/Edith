@@ -28,10 +28,11 @@ edith/
 │                           monitor, monid), productivity/ (goals, todos, notes, projects),
 │                           search/ (web_search, news, youtube, research), system/ (scheduling,
 │                           notify, mcp_client, computer_use)
-├── integrations/          Voice (STT/TTS), WhatsApp (Playwright), browser (Browserbase), push
-├── google/                Gmail, Drive, Calendar, Docs, Sheets
+├── integrations/          External service integrations: voice (STT/TTS), WhatsApp
+│                           (Playwright), browser (Browserbase), push, google/ (Gmail, Drive,
+│                           Calendar, Docs, Sheets), linkedin/ (OAuth, content planner,
+│                           autopost, stats-driven learning loop)
 ├── job_applications/       Autonomous job-search & apply pipeline
-├── linkedin/               OAuth, content planner, autopost, stats-driven learning loop
 ├── computer_use/            macOS Accessibility + OCR perception, LLM-driven screen control
 ├── temporal/                Scheduled/recurring workflows (Temporal Cloud)
 ├── observability/            Tracing, spend tracking, eval harness
