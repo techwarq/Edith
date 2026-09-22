@@ -2,7 +2,7 @@
 simple (unlike todos_store's accumulating note) — a title, an optional note
 and project tag, and an open/resolved status. Same shape whether the entry
 came from the dashboard's "add" form or Edith logging one from chat
-(edith/tools/monitor.py).
+(edith/tools/ops/monitor.py).
 """
 
 import sqlite3

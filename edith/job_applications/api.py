@@ -20,7 +20,7 @@ from edith.config import JOBS_DAILY_CAP
 from edith.google import auth as google_auth
 from edith.memory import job_applications_store as jobs_store
 from edith.memory import store
-from edith.tools.job_applications import AUTONOMOUS_KEY, JOBS_CONFIG_CATEGORY
+from edith.tools.growth.job_applications import AUTONOMOUS_KEY, JOBS_CONFIG_CATEGORY
 
 
 def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:

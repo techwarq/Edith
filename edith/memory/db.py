@@ -195,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_ideas_bugs_status ON ideas_bugs(status, created_a
 -- dashboard's Integrations tab — no code change/redeploy needed to add one.
 -- Only stdio-based servers (command + args + optional env) are supported;
 -- their tools are discovered once at process startup and merged into the
--- normal ToolRegistry (see edith/tools/mcp_client.py), so a server added here
+-- normal ToolRegistry (see edith/tools/system/mcp_client.py), so a server added here
 -- takes effect on the next restart, not immediately.
 CREATE TABLE IF NOT EXISTS mcp_servers (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_investigation_edges_node_a ON investigation_edges
 CREATE INDEX IF NOT EXISTS idx_investigation_edges_node_b ON investigation_edges(node_b_id);
 
 -- Autonomous job-search/apply pipeline. "job" here means job listing/application,
--- NOT a scheduled Temporal job (see edith/tools/scheduling.py's schedule_job/list_jobs) —
+-- NOT a scheduled Temporal job (see edith/tools/system/scheduling.py's schedule_job/list_jobs) —
 -- kept as job_applications, never a bare "jobs" table/tool name, to avoid confusion
 -- and tool-registry name collisions with the existing scheduling tools.
 CREATE TABLE IF NOT EXISTS job_applications (

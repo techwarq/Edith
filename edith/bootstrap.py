@@ -20,23 +20,28 @@ from edith.google import drive as google_drive
 from edith.google import gmail as google_gmail
 from edith.llm.client import make_client
 from edith.memory import db, store, vectors
-from edith.tools import computer_use as computer_use_tool
-from edith.tools import github as github_tool
-from edith.tools import goals as goals_tool
-from edith.tools import health as health_tool
-from edith.tools import hunter as hunter_tool
-from edith.tools import job_applications as job_applications_tool
-from edith.tools import outreach as outreach_tool
-from edith.tools import mcp_client
-from edith.tools import monid as monid_tool
-from edith.tools import news as news_tool
-from edith.tools import monitor as monitor_tool
-from edith.tools import notes, notify, research as research_tool, scheduling, tracking, web_search
-from edith.tools import projects as projects_tool
-from edith.tools import social as social_tool
-from edith.tools import todos as todos_tool
-from edith.tools import vercel as vercel_tool
-from edith.tools import youtube as youtube_tool
+from edith.tools.growth import hunter as hunter_tool
+from edith.tools.growth import job_applications as job_applications_tool
+from edith.tools.growth import outreach as outreach_tool
+from edith.tools.growth import social as social_tool
+from edith.tools.ops import github as github_tool
+from edith.tools.ops import monid as monid_tool
+from edith.tools.ops import monitor as monitor_tool
+from edith.tools.ops import tracking
+from edith.tools.ops import vercel as vercel_tool
+from edith.tools.productivity import goals as goals_tool
+from edith.tools.productivity import health as health_tool
+from edith.tools.productivity import notes
+from edith.tools.productivity import projects as projects_tool
+from edith.tools.productivity import todos as todos_tool
+from edith.tools.search import news as news_tool
+from edith.tools.search import research as research_tool
+from edith.tools.search import web_search
+from edith.tools.search import youtube as youtube_tool
+from edith.tools.system import computer_use as computer_use_tool
+from edith.tools.system import mcp_client
+from edith.tools.system import notify
+from edith.tools.system import scheduling
 from edith.tools.registry import ToolRegistry
 from edith.integrations import whatsapp
 

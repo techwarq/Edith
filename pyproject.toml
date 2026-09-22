@@ -64,5 +64,10 @@ packages = [
     "edith.temporal",
     "edith.todos",
     "edith.tools",
+    "edith.tools.growth",
+    "edith.tools.ops",
+    "edith.tools.productivity",
+    "edith.tools.search",
+    "edith.tools.system",
     "edith.web",
 ]

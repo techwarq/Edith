@@ -10,10 +10,10 @@ COPY docker-entrypoint.sh ./
 RUN pip install --no-cache-dir -e . \
     && playwright install --with-deps chromium
 
-# Node/npm for the monid CLI (edith/tools/monid.py shells out to it) — Debian's
+# Node/npm for the monid CLI (edith/tools/ops/monid.py shells out to it) — Debian's
 # own nodejs/npm packages lag far behind current LTS, so use NodeSource's setup
 # script for a real current version instead. Also doubles as npx for any
-# user-added npx-launched MCP server (edith/tools/mcp_client.py). uv/uvx
+# user-added npx-launched MCP server (edith/tools/system/mcp_client.py). uv/uvx
 # installed in the same layer (before curl is purged) as the other common MCP
 # server launcher (e.g. `uvx some-mcp-package`) — installed to a fixed path
 # rather than relying on the installer's own shell-profile wiring, which

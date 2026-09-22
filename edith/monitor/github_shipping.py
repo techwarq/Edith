@@ -32,7 +32,7 @@ class GitHubError(Exception):
 
 def get_recent_commits(repos: list[dict[str, str]], token: str, per_repo_limit: int = 8) -> list[dict[str, Any]]:
     """repos is [{"repo": "owner/name", "label": "Edith"}, ...] (label is the
-    tracked repo's display name — see edith/tools/monitor.py's
+    tracked repo's display name — see edith/tools/ops/monitor.py's
     track_shipping_repo). Returns commits across all repos, newest first;
     a repo that errors (bad name, private+no token) is skipped with a logged
     warning rather than failing the whole panel."""

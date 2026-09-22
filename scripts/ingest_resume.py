@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One-time local ingestion of the resume + writing-style sample used by the
-job-application pipeline (edith/tools/job_applications.py).
+job-application pipeline (edith/tools/growth/job_applications.py).
 
 Run this once (and again whenever the resume/style file changes) so the
 pipeline has zero runtime dependency on local files — it reads only from the

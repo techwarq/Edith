@@ -1,5 +1,5 @@
 """CRUD for mcp_servers — user-configured MCP servers, added from the web
-dashboard rather than code (see edith/tools/mcp_client.py for how they get
+dashboard rather than code (see edith/tools/system/mcp_client.py for how they get
 turned into callable tools, and edith/mcp/api.py for the HTTP surface this
 backs).
 """

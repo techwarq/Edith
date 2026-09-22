@@ -20,9 +20,9 @@ from google import genai
 from edith.config import Settings
 from edith.memory import ideas_bugs_store, store
 from edith.monitor import dodo, github_shipping, vercel_analytics
-from edith.tools.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
-from edith.tools.news import fetch_news
-from edith.tools.social import SOCIAL_SKILL_CATEGORY
+from edith.tools.ops.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
+from edith.tools.search.news import fetch_news
+from edith.tools.growth.social import SOCIAL_SKILL_CATEGORY
 
 
 def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: genai.Client, api_token: str) -> APIRouter:

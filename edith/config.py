@@ -30,7 +30,7 @@ DEFAULT_MODEL = "qwen/qwen3.7-flash"
 # 2026-07-19, so it no longer needs this). Not user-facing — quiet plumbing.
 DEFAULT_OPENROUTER_TEXT_MODEL = "qwen/qwen3-coder-next"
 # Gemini model used only for web_search/news/youtube's native Google Search
-# grounding (edith/tools/web_search.py etc.) via the genai SDK — unrelated to,
+# grounding (edith/tools/search/web_search.py etc.) via the genai SDK — unrelated to,
 # and independent from, DEFAULT_MODEL above (the core agent's own chat model).
 DEFAULT_GEMINI_GROUNDING_MODEL = "gemini-3.5-flash"
 
@@ -118,7 +118,7 @@ DEEP_RESEARCH_SLEEP_HOURS = float(os.environ.get("EDITH_DEEP_RESEARCH_SLEEP_HOUR
 # filesystem for secrets but does support env vars — same var works locally and hosted.
 FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
 
-# Hunter.io (edith/tools/hunter.py) — domain search / email finder / verifier / company
+# Hunter.io (edith/tools/growth/hunter.py) — domain search / email finder / verifier / company
 # & person enrichment, for lead-gen and outreach (finding real emails to pair with the
 # existing send_email tool). Optional at startup like Qdrant/Temporal/Firebase: the app
 # runs fine without it, the tool just reports it isn't configured yet if called.
@@ -146,7 +146,7 @@ VERCEL_TEAM_ID = os.environ.get("VERCEL_TEAM_ID", "").strip()  # only needed if 
 # with no token at all, only private repos need one.
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 
-# Job-application pipeline (edith/tools/job_applications.py, edith/job_applications/api.py,
+# Job-application pipeline (edith/tools/growth/job_applications.py, edith/job_applications/api.py,
 # JOB_SEARCH_INSTRUCTION in edith/temporal/schedules.py). Cron fires several times across
 # Bengaluru working hours (~9:30am-6:30pm IST) rather than one daily batch, so sends are
 # trickled through the day instead of firing all at once. daily_cap is enforced via
@@ -168,7 +168,7 @@ LINKEDIN_VERSION = os.environ.get("LINKEDIN_VERSION", "202607").strip()
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 PGVECTOR_ENABLED = os.environ.get("PGVECTOR_ENABLED", "true").strip().lower() not in ("0", "false", "no")
 
-# Computer use (edith/computer_use/, edith/tools/computer_use.py) — local-machine-only
+# Computer use (edith/computer_use/, edith/tools/system/computer_use.py) — local-machine-only
 # voice/text-triggered browser + native macOS app control. Perception is our own code
 # against PyObjC/Accessibility (edith/computer_use/accessibility.py); decisions come from
 # TypeSafe's real Jev model via OpenRouter's own TypeSafe-compatible endpoint

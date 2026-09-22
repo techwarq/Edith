@@ -1171,7 +1171,7 @@ async function runDeepResearch() {
 //
 // Add any stdio-based MCP server (command + args, optional env vars) — its
 // tools get discovered and merged into Edith's toolset on the next server
-// restart, not immediately (see edith/tools/mcp_client.py).
+// restart, not immediately (see edith/tools/system/mcp_client.py).
 
 async function loadMcpServers() {
   const panel = document.getElementById("mcp-panel");

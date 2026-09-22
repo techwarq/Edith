@@ -130,7 +130,7 @@ def _store_health_metrics(metrics: list[dict]) -> int:
     if latest_weight:
         # Keeps the latest weight visible in the system prompt's profile block
         # without Edith needing to call a tool for basic "what's my weight" context —
-        # same pattern used for every other durable fact (see edith/tools/notes.py).
+        # same pattern used for every other durable fact (see edith/tools/productivity/notes.py).
         store.save_fact(
             ctx.conn,
             key="current_weight",

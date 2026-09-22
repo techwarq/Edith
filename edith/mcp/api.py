@@ -1,6 +1,6 @@
 """MCP servers API — the web dashboard's Integrations tab. Lets the user add/
 remove/enable stdio-based MCP servers without touching code (see
-edith/tools/mcp_client.py for how an enabled server's tools get discovered
+edith/tools/system/mcp_client.py for how an enabled server's tools get discovered
 and merged into the agent's ToolRegistry). Same shared-token auth pattern as
 edith/goals/api.py and edith/todos/api.py.
 
