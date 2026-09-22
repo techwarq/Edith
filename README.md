@@ -23,7 +23,11 @@ edith/
 ├── agent.py, commands.py, prompts.py   Core chat/command loop
 ├── llm/                 OpenRouter tool-calling loop (retry/backoff, context-trim fallback)
 ├── memory/               SQLite (facts, FTS5 history) + Qdrant/pgvector semantic recall
-├── tools/                ~20 LLM-callable tools (schema + dispatch), one per integration
+├── tools/                LLM-callable tools (schema + dispatch), grouped by domain:
+│                           growth/ (jobs, outreach, hunter, social), ops/ (github, vercel,
+│                           monitor, monid), productivity/ (goals, todos, notes, projects),
+│                           search/ (web_search, news, youtube, research), system/ (scheduling,
+│                           notify, mcp_client, computer_use)
 ├── integrations/          Voice (STT/TTS), WhatsApp (Playwright), browser (Browserbase), push
 ├── google/                Gmail, Drive, Calendar, Docs, Sheets
 ├── job_applications/       Autonomous job-search & apply pipeline
