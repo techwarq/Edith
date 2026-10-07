@@ -1,89 +1,134 @@
+<div align="center">
+
 # Edith
 
-A personal AI agent that builds a long-term working relationship with one user — not a
-stateless chatbot. Edith remembers facts and conversations, talks (voice in/out), acts on
-Gmail/Drive/Calendar and WhatsApp, and runs autonomous scheduled work: nightly self-reflection,
-a job-application pipeline that scans VC/accelerator job boards and applies on your behalf, and
-a LinkedIn growth engine that plans and posts content. It ships as a hosted API plus four
-clients: a PWA, an Android app, an Electron desktop widget, and a native macOS widget.
+**A personal AI agent that remembers you, talks to you, and does the work on your Mac, your inbox, and your calendar.**
 
-## Why
+<img src="docs/media/eddy-demo.gif" alt="Eddy, Edith's macOS notch, researching rocket engines in the browser and writing a summary into TextEdit from one sentence" width="800">
 
-Generic assistants start every session from zero. Edith keeps durable memory (facts, semantic
-vector recall, full conversation history) and takes autonomous action on a schedule, so
-"remind me" / "apply for me" / "post for me" actually happens without being re-explained.
+*One sentence: Eddy opens the browser, researches, and writes sourced notes into TextEdit.* · [Watch the MP4](docs/media/eddy-demo.mp4)
 
-## Architecture
+</div>
 
-```
-edith/
-├── server.py          FastAPI app, SSE chat streaming, voice/computer-use endpoints
-├── cli.py              Terminal client
-├── bootstrap.py         Wires settings + DB + tool registry into one agent context
-├── agent.py, commands.py, prompts.py   Core chat/command loop
-├── llm/                 OpenRouter tool-calling loop (retry/backoff, context-trim fallback)
-├── memory/               SQLite (facts, FTS5 history) + Qdrant/pgvector semantic recall
-├── tools/                LLM-callable tools (schema + dispatch), grouped by domain:
-│                           growth/ (jobs, outreach, hunter, social), ops/ (github, vercel,
-│                           monitor, monid), productivity/ (goals, todos, notes, projects),
-│                           search/ (web_search, news, youtube, research), system/ (scheduling,
-│                           notify, mcp_client, computer_use)
-├── integrations/          External service integrations: voice (STT/TTS), WhatsApp
-│                           (Playwright), browser (Browserbase), push, google/ (Gmail, Drive,
-│                           Calendar, Docs, Sheets), linkedin/ (OAuth, content planner,
-│                           autopost, stats-driven learning loop)
-├── job_applications/       Autonomous job-search & apply pipeline
-├── computer_use/            macOS Accessibility + OCR perception, LLM-driven screen control
-├── temporal/                Scheduled/recurring workflows (Temporal Cloud)
-├── observability/            Tracing, spend tracking, eval harness
-├── goals/, todos/, mcp/, monitor/, web/    Feature APIs + the built-in dashboard UI
-└── config.py             Every integration is optional — degrades gracefully if unconfigured
+---
 
-edith-android/    Capacitor Android app
-edith-desktop/    Electron "Dynamic Island" voice widget
-edith-widget/     Native macOS widget (Swift)
-edith-dashboard/  Standalone Next.js observability dashboard
-tests/            343 tests, pytest
-```
+Most assistants start every conversation from zero. Edith is built for one person over the long
+haul: it keeps durable memory of facts and past conversations, runs jobs on a schedule, and acts
+across your apps. Anything that sends, posts, or submits waits for your approval.
 
-## How it works
+## What it does
 
-- **Core loop** — FastAPI + Server-Sent Events; an OpenRouter tool-calling loop (Qwen) with a
-  capped iteration count, retry/backoff, and a context-trim fallback for long tool chains.
-- **Memory** — SQLite for facts/sessions/FTS5 history, Qdrant (or pgvector) for semantic vector
-  recall, plus a nightly reflection + eval job so the agent's own behavior gets scored over time.
-- **Autonomy, gated** — every recurring job (nightly reflection, job-search runs, deep research)
-  is opt-in and idempotent via Temporal schedules; anything that sends/submits externally queues
-  for user approval until explicitly promoted to autonomous.
-- **Observability** — every LLM call and tool call is traced with cost/latency, queryable via
-  `/api/observability/*` and the dashboard; caught a real hallucination bug on its first eval run.
-- **Integrations** — Gmail/Drive/Calendar/Docs/Sheets, WhatsApp (Playwright + Browserbase),
-  Firebase push, Hunter.io enrichment, GitHub/Vercel monitoring, Health Connect, and
-  user-configurable MCP servers — each reports "not configured" rather than crashing startup
-  when its credentials are absent.
-
-## Running it
-
-```bash
-pip install -e .
-cp .env.example .env   # fill in the integrations you want
-python main.py         # terminal client
-# or
-uvicorn edith.server:app --reload   # HTTP/SSE API + built-in web dashboard
-```
-
-```bash
-pytest   # 343 tests
-```
-
-Deploys to Railway via the included `Dockerfile`.
+| | |
+|---|---|
+| 🧠 **Remembers** | Durable facts, full conversation history with keyword search, and semantic recall over a vector DB. |
+| 🎙️ **Talks** | Hold <kbd>⌃</kbd> to talk to **Eddy**, a notch on the edge of your screen. She speaks back. |
+| 🖥️ **Uses your Mac** | Drives apps through the Accessibility tree and browser pages through the DOM. Asks before sends and submits, and stops when you take over. |
+| 📬 **Works your accounts** | Gmail, Drive, Calendar, Docs, Sheets, WhatsApp, GitHub, Vercel, and any MCP server you add. |
+| ⏰ **Runs on its own** | Reminders, recurring jobs, nightly reflection, a job-application pipeline, and a LinkedIn content engine, all on Temporal. Each one is opt-in. |
+| 🔎 **Researches** | `deep_research` breaks a question into sub-questions, searches each one, and writes a sourced answer. |
+| 📊 **Watches itself** | Every LLM and tool call is traced with cost and latency. An eval harness scores its answers (its first run caught a real hallucination bug). |
 
 ## Clients
 
-| Client | Stack | What it's for |
+| Client | Stack | |
 |---|---|---|
-| `edith/web` | Vanilla JS PWA, served by the API itself | Chat, Goals, Todos, Jobs, Content, Insights, MCP tabs |
-| `edith-android` | Capacitor | Mobile chat + push notifications |
-| `edith-desktop` | Electron | Always-on-top notch-hugging voice widget |
-| `edith-widget` | Swift | Native macOS equivalent of the Electron widget |
-| `edith-dashboard` | Next.js | Standalone observability dashboard (traces, evals, goals) |
+| **Eddy notch** (`edith-widget/`) | Swift, macOS | Voice notch on the left screen edge. Starts the local server so macOS permissions cover it. |
+| **Web app** (`edith/web/`) | Vanilla JS PWA | Chat, Goals, Todos, Jobs, Content, Insights, MCP tabs. Served by the API. |
+| **Android** (`edith-android/`) | Capacitor | Mobile chat and push notifications. |
+| **Desktop widget** (`edith-desktop/`) | Electron | Always-on-top voice widget. |
+| **Dashboard** (`edith-dashboard/`) | Next.js | Traces, spend, evals, goals. |
+
+## Quick start
+
+```bash
+git clone https://github.com/techwarq/Edith.git && cd Edith
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e .
+cp .env.example .env        # add the keys for the integrations you want
+
+python main.py                          # terminal chat
+uvicorn edith.server:app --reload       # API + web app at http://localhost:8000
+```
+
+Only an LLM key is required. Every integration is optional and reports "not configured" instead
+of crashing at startup.
+
+<details>
+<summary><b>Build the Eddy notch (macOS)</b></summary>
+
+```bash
+cd edith-widget && ./build-app.sh
+```
+
+Grant Accessibility, Screen Recording, and Microphone when the notch asks. Shortcuts: hold
+<kbd>⌃</kbd> to talk, <kbd>⌃</kbd><kbd>⌘</kbd> to type, <kbd>Esc</kbd> to stop.
+</details>
+
+## How it works
+
+```
+             ┌──────────── clients ─────────────┐
+             │ Eddy notch · Web · Android · CLI │
+             └────────────────┬─────────────────┘
+                              │ SSE
+                    ┌─────────▼──────────┐
+                    │  FastAPI server    │
+                    │  agent tool loop   │──── Temporal (scheduled jobs)
+                    └─────────┬──────────┘
+          ┌───────────────────┼────────────────────┐
+     ┌────▼─────┐       ┌─────▼──────┐       ┌─────▼──────┐
+     │  Memory  │       │   Tools    │       │  Approval  │
+     │ SQLite + │       │ Mac, Google│       │   queue    │
+     │ FTS5 +   │       │ WhatsApp,  │       │ (sends and │
+     │ Qdrant   │       │ web, MCP…  │       │  submits)  │
+     └──────────┘       └────────────┘       └────────────┘
+```
+
+- **Agent loop**: OpenRouter tool calling (default `qwen/qwen3.7-flash`, change it with
+  `EDITH_MODEL`), with retry/backoff, an iteration cap, and context trimming for long tool chains.
+- **Memory**:
+  - Working memory: the last 40 turns of the conversation.
+  - Durable facts: a user profile with categories.
+  - Exact recall: SQLite FTS5 over all history.
+  - Semantic recall: Gemini embeddings in Qdrant.
+- **Mac control**: a decider model picks each step from a text table of on-screen elements. A
+  vision model is used only as a one-step fallback. Sends and submits need confirmation, stop
+  stays in effect until you resume, and runs have time and step limits.
+- **Autonomy, gated**: every scheduled job is opt-in and safe to re-run. Anything that leaves your
+  machine (email, WhatsApp, applications, posts) waits in an approval queue.
+
+<details>
+<summary><b>Repository layout</b></summary>
+
+```
+edith/
+├── server.py, cli.py, agent.py, bootstrap.py, prompts.py
+├── llm/               OpenRouter tool-calling loop
+├── memory/            SQLite (facts, FTS5 history) + Qdrant semantic recall
+├── tools/             LLM tools by domain: growth/, ops/, productivity/, search/, system/
+├── integrations/      voice, WhatsApp, browser, push, google/, linkedin/
+├── computer_use/      Accessibility + DOM perception, step-by-step Mac operator
+├── job_applications/  Job-search and apply pipeline
+├── temporal/          Scheduled and recurring workflows
+├── observability/     Tracing, spend, evals
+└── goals/, todos/, mcp/, monitor/, web/
+
+edith-widget/     Eddy notch (Swift)
+edith-desktop/    Electron widget
+edith-android/    Capacitor app
+edith-dashboard/  Next.js dashboard
+tests/            pytest suite
+```
+</details>
+
+## Tests and deploy
+
+```bash
+pytest        # 368 tests
+```
+
+Deploys to Railway with the included `Dockerfile`.
+
+## License
+
+[MIT](LICENSE)
