@@ -5,33 +5,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = WidgetViewModel()
     private var panel: WidgetPanel?
 
-    // Bare Control is the modifier used in a huge number of unrelated system/app
-    // shortcuts (Control+click, Control+C, Mission Control, Control+Command
-    // below, ...) — every one of those passes through a "Control alone"
-    // instant on the way down/up. A held-for-this-long gate stops those quick
-    // incidental taps from starting a recording; a deliberate hold-to-talk
-    // still feels instant against a ~200ms threshold.
     private static let voiceHoldThreshold: TimeInterval = 0.2
     private var pendingVoiceStart: DispatchWorkItem?
     private var voiceCaptureActive = false
 
+    func applicationWillTerminate(_ notification: Notification) {
+        ServerLauncher.shared.shutdown()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory) // no Dock icon, no menu bar — pure widget
+        NSApp.setActivationPolicy(.accessory)
 
         let panel = WidgetPanel(viewModel: viewModel)
         self.panel = panel
         panel.orderFrontRegardless()
 
-        // Control (held alone): true push-to-talk — starts the instant it's
-        // held past the threshold, stops the instant it's released, however
-        // short. Control+Command: bring the panel forward and focus the text
-        // field to type instead of speaking.
         HotKeyManager.shared.onModifierHold([.control], onPress: { [weak self] in
             guard let self else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.voiceCaptureActive = true
-                self.panel?.orderFrontRegardless()
                 self.viewModel.beginVoiceCapture()
             }
             self.pendingVoiceStart = work
@@ -45,10 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.viewModel.endVoiceCapture()
             }
         })
+
+        HotKeyManager.shared.onKeyDown(53) { [weak self] in
+            guard let self, self.viewModel.isBusy else { return }
+            self.viewModel.stopWork()
+        }
         HotKeyManager.shared.onModifierCombo([.control, .command]) { [weak self] in
-            guard let self, let panel = self.panel else { return }
-            panel.makeKeyAndOrderFront(nil)
-            self.viewModel.requestTextFocus()
+            self?.viewModel.toggleTyping()
         }
     }
 }

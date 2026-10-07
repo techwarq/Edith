@@ -1,0 +1,41 @@
+{
+  "_note": "Clep steps for demo/eddy-demo.html: open the notch \u2192 talk \u2192 Eddy researches in Safari and writes a summary in TextEdit \u2192 reply.",
+  "steps": [
+    {
+      "action": "hover",
+      "target": "action:open",
+      "hold": 0.5
+    },
+    {
+      "action": "click",
+      "target": "action:open"
+    },
+    {
+      "action": "wait",
+      "for": "state:open",
+      "timeout": 3
+    },
+    {
+      "action": "wait",
+      "for": "time:0.7"
+    },
+    {
+      "action": "click",
+      "target": "action:talk"
+    },
+    {
+      "action": "wait",
+      "for": "state:thinking",
+      "timeout": 8
+    },
+    {
+      "action": "wait",
+      "for": "state:done",
+      "timeout": 40
+    },
+    {
+      "action": "wait",
+      "for": "time:1.6"
+    }
+  ]
+}

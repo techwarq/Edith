@@ -1,7 +1,4 @@
-"""Shared app-context construction — used by both cli.py (terminal) and
-server.py (hosted WebSocket API) so neither duplicates registry/agent setup.
-"""
-
+import logging
 import sqlite3
 from dataclasses import dataclass
 
@@ -71,9 +68,9 @@ EXECUTORS = {
 @dataclass
 class AppContext:
     conn: sqlite3.Connection
-    client: openai.OpenAI  # OpenRouter — the core agent's tool-calling loop, plus STT, TTS, and spoken-style rewrite
-    genai_client: genai.Client  # Gemini native SDK — web_search grounding and embeddings (TTS moved to OpenRouter 2026-07-31)
-    qdrant_client: QdrantClient | None  # None when QDRANT_URL/QDRANT_API_KEY aren't set — semantic memory is optional
+    client: openai.OpenAI
+    genai_client: genai.Client
+    qdrant_client: QdrantClient | None
     agent: Agent
     registry: ToolRegistry
     settings: Settings
@@ -86,10 +83,6 @@ def build_registry(
     qdrant_client: QdrantClient | None,
     settings: Settings,
 ) -> ToolRegistry:
-    """genai_client/model are Gemini's own (settings.gemini_grounding_model, NOT
-    the core agent's settings.model) — web_search/news/youtube use Gemini's
-    native Google Search grounding tool, not OpenRouter's ":online" plugin.
-    genai_client doubles as the embedding client for qdrant_client-backed tools."""
     registry = ToolRegistry()
     notes.register(registry, conn, qdrant_client, genai_client)
     web_search.register(registry, genai_client, model, qdrant_client)
@@ -118,12 +111,11 @@ def build_registry(
     github_tool.register(registry, settings)
     vercel_tool.register(registry, settings)
     computer_use_tool.register(registry, settings)
-    mcp_client.register_all(registry, conn)  # user-configured MCP servers — see edith/memory/mcp_store.py
+    mcp_client.register_all(registry, conn)
     return registry
 
 
 def resolve_session(conn: sqlite3.Connection, model: str) -> tuple[str, bool]:
-    """Returns (session_id, is_first_run)."""
     is_first_run = not store.any_session_exists(conn)
     last_id = store.get_last_session_id(conn)
     if last_id and store.session_exists(conn, last_id):
@@ -132,12 +124,16 @@ def resolve_session(conn: sqlite3.Connection, model: str) -> tuple[str, bool]:
 
 
 def build_app_context(settings: Settings) -> AppContext:
-    google_auth.write_credentials_from_env()  # no-op locally; writes from env vars on a fresh volume
-    conn = db.connect(settings.db_path)  # raises db.DatabaseError — caller decides how to report it
-    client = make_client(settings.api_key)  # OpenRouter — core agent's tool-calling loop, STT, TTS
-    genai_client = genai.Client(api_key=settings.gemini_api_key)  # Gemini native SDK — web_search, embeddings
+    google_auth.write_credentials_from_env()
+    conn = db.connect(settings.db_path)
+    client = make_client(settings.api_key)
+    genai_client = genai.Client(api_key=settings.gemini_api_key)
     qdrant_client = vectors.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key)
-    vectors.ensure_collection(qdrant_client)
+    try:
+        vectors.ensure_collection(qdrant_client)
+    except Exception:
+        logging.getLogger("edith.bootstrap").exception("Qdrant unreachable — starting without semantic memory")
+        qdrant_client = None
     registry = build_registry(conn, genai_client, settings.gemini_grounding_model, qdrant_client, settings)
     agent = Agent(conn, client, settings.model, registry, qdrant_client, genai_client)
     return AppContext(

@@ -1,25 +1,3 @@
-"""Minimal client for TypeSafe's real Jev decision model, via OpenRouter's
-alpha Decisions API — https://openrouter.ai/api/alpha/decisions, model
-"~typesafe/jev-latest" — using the same OPENROUTER_API_KEY edith already has
-for its core chat model, no separate TypeSafe account needed. This endpoint
-is empirically verified live (see founder_radar/mac_agent's jev_client.py,
-which this client's protocol matches); the previous /v1/systemone endpoint
-this file used to call was never actually confirmed working.
-
-Jev answers typed questions about a piece of state instead of generating
-text: `choice` picks one of a closed set of named options with a full
-probability distribution, `noul` returns a yes/no probability, `score` rates
-state against an ordered rubric. Code, never the model, decides what to do
-with an answer — this client only does the HTTP round trip.
-
-If the real Jev endpoint fails (network error, non-2xx, bad JSON), this
-falls back to simulating Jev's typed-answer interface via a plain chat
-completion to qwen/qwen3.7-flash in JSON mode — same fallback contract as
-founder_radar/lib/jev.js and the mac_agent port. Callers can't tell which
-path answered except via the printed "[Jev] ..." line; the Answer shape is
-identical either way.
-"""
-
 from __future__ import annotations
 
 import json
@@ -44,9 +22,9 @@ class TypeSafeError(Exception):
 
 @dataclass(frozen=True)
 class Question:
-    type: str  # "choice" | "noul" | "score"
+    type: str
     instructions: str
-    criteria: Any  # choice/noul: dict[option, description]; score: list of ordered level labels
+    criteria: Any
 
 
 def choice(instructions: str, criteria: dict[str, str]) -> Question:
@@ -76,8 +54,6 @@ def _questions_body(questions: dict[str, Question]) -> dict:
 
 
 def _describe_questions(questions: dict[str, Question]) -> str:
-    """Renders `questions` as prose for the fallback simulation prompt — the
-    real Jev endpoint takes the same dict as structured JSON instead."""
     lines = []
     for qid, q in questions.items():
         if q.type == "noul":
@@ -120,9 +96,6 @@ def _build_fallback_prompt(state: Any, questions: dict[str, Question]) -> str:
 
 
 def _normalize_fallback_answers(raw: dict, questions: dict[str, Question]) -> dict[str, Answer]:
-    """Clamps/defaults a qwen JSON-mode reply into the same Answer shape the
-    real endpoint returns — a free-text-model simulation is never as clean as
-    Jev's own typed output, so every field here is defensively coerced."""
     answers: dict[str, Answer] = {}
     for qid, q in questions.items():
         r = raw.get(qid) or {}
@@ -157,17 +130,17 @@ class TypeSafeClient:
         if not api_key:
             raise TypeSafeError("OPENROUTER_API_KEY isn't set — Jev is called through OpenRouter, same key as everything else.")
         self._api_key = api_key
+        self.last_source = ""
 
     def ask(self, state: Any, questions: dict[str, Question]) -> dict[str, Answer]:
-        """Sends every question in one request — Jev answers them in parallel, so
-        one question's answer never sees another's. Falls back to a qwen
-        simulation of the same typed interface if the real endpoint fails."""
         try:
             answers = self._ask_real_jev(state, questions)
+            self.last_source = "jev"
             print(f"  [Jev] openrouter-decisions -> {JEV_MODEL}")
         except TypeSafeError as e:
             print(f"  [Jev] fallback to {FALLBACK_MODEL} simulation ({e})")
             answers = self._ask_fallback(state, questions)
+            self.last_source = "fallback"
 
         missing = set(questions) - set(answers)
         if missing:
@@ -224,7 +197,7 @@ class TypeSafeClient:
                 max_tokens=4000,
                 response_format={"type": "json_object"},
             )
-        except Exception as e:  # noqa: BLE001 — any failure here means both paths are down
+        except Exception as e:
             raise TypeSafeError(f"qwen fallback simulation also failed: {e}") from e
 
         content = resp.choices[0].message.content or "{}"

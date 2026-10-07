@@ -1,44 +1,71 @@
 import SwiftUI
 import AppKit
+import Combine
 
-final class WidgetPanel: NSPanel {
+final class WidgetPanel: NSPanel, NSWindowDelegate {
+    static let expandedSize = NSSize(width: 400, height: 340)
+    static let collapsedSize = NSSize(width: 28, height: 120)
+    private static let collapseAnimationDelay: TimeInterval = 0.45
+
+    private let viewModel: WidgetViewModel
+    private var cancellables = Set<AnyCancellable>()
+
     init(viewModel: WidgetViewModel) {
-        let size = NSSize(width: 420, height: 260)
+        self.viewModel = viewModel
         super.init(
-            contentRect: NSRect(origin: .zero, size: size),
+            contentRect: NSRect(origin: .zero, size: Self.collapsedSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        isMovableByWindowBackground = true
-        contentView = NSHostingView(rootView: ContentView(viewModel: viewModel))
-        dockToLeftEdge()
+        hasShadow = false
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        isMovable = false
+        delegate = self
+
+        let hosting = NSHostingView(rootView: ContentView(viewModel: viewModel))
+        hosting.sizingOptions = []
+        contentView = hosting
+        dock(size: Self.collapsedSize)
+
+        viewModel.$isExpanded
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] expanded in self?.apply(expanded: expanded) }
+            .store(in: &cancellables)
+        viewModel.$focusInputTrigger
+            .dropFirst()
+            .sink { [weak self] _ in self?.makeKeyAndOrderFront(nil) }
+            .store(in: &cancellables)
     }
 
     override var canBecomeKey: Bool { true }
 
-    func dockToLeftEdge() {
-        guard let screen = NSScreen.main else { return }
-        let margin: CGFloat = 16
-        let frame = screen.visibleFrame
-        let origin = NSPoint(
-            x: frame.minX + margin,
-            y: frame.minY + (frame.height - self.frame.height) / 2
-        )
-        setFrameOrigin(origin)
+    private func apply(expanded: Bool) {
+        if expanded {
+            dock(size: Self.expandedSize)
+            orderFrontRegardless()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.collapseAnimationDelay) { [weak self] in
+                guard let self, !self.viewModel.isExpanded else { return }
+                self.dock(size: Self.collapsedSize)
+            }
+        }
     }
 
-    func toggle() {
-        if isVisible {
-            orderOut(nil)
-        } else {
-            dockToLeftEdge()
-            orderFrontRegardless()
-        }
+    private func dock(size: NSSize) {
+        let mouse = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main
+        else { return }
+        let visible = screen.visibleFrame
+        let origin = NSPoint(x: visible.minX, y: visible.midY - size.height / 2)
+        setFrame(NSRect(origin: origin, size: size), display: true)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        viewModel.collapseIfIdle()
     }
 }

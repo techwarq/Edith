@@ -14,71 +14,136 @@ final class WidgetViewModel: ObservableObject {
     @Published var status: WidgetStatus = .connecting
     @Published var transcript: String = ""
     @Published var reply: String = ""
-    @Published var isPanelVisible: Bool = false
+    @Published var isExpanded: Bool = false
+
+    @Published var activity: String = ""
     @Published var focusInputTrigger: Int = 0
+
+    @Published var levels: [Float] = Array(repeating: 0, count: WidgetViewModel.levelHistory)
+
+    var isHovering = false { didSet { if isHovering { cancelAutoCollapse() } else { scheduleAutoCollapse() } } }
+    var isTyping = false { didSet { if isTyping { cancelAutoCollapse() } else { scheduleAutoCollapse() } } }
+
+    static let levelHistory = 28
+    private static let autoCollapseNanoseconds: UInt64 = 8_000_000_000
+    private var autoCollapseTask: Task<Void, Never>?
 
     private let client = BackendClient()
     private let speechRecognizer = SpeechRecognizer()
     private var sessionId: String?
 
-    // Set the instant capture is requested, not once recognition actually
-    // starts — starting involves an async permission round trip, and a
-    // caller invoking beginVoiceCapture() twice inside that window would
-    // pass an isRunning-based guard both times.
     private var isCapturing = false
-    private var pendingTickTask: Task<Void, Never>?
-    private var lastSentTranscript = ""
-
-    // Matches edith/computer_use/voice_loop.py's own DEFAULT_DEBOUNCE_SECONDS
-    // (0.18s) — the Speech framework can fire partials faster than that, and
-    // there's no point round-tripping to Jev more often than the tick loop
-    // itself is designed to reason about a new transcript snapshot.
-    private static let tickDebounceNanoseconds: UInt64 = 190_000_000
+    private static let trailingListenNanoseconds: UInt64 = 350_000_000
 
     func requestTextFocus() {
+        expand()
         focusInputTrigger += 1
     }
 
-    func start() {
-        Task {
-            do {
-                sessionId = try await client.connect()
-                status = .idle
-            } catch {
-                status = .error(Self.describe(error))
-            }
+    func expand() {
+        isExpanded = true
+        if sessionId == nil { start() }
+    }
+
+    func collapse() {
+        cancelAutoCollapse()
+        if isCapturing { endVoiceCapture() }
+        isExpanded = false
+    }
+
+    func toggleTyping() {
+        if isExpanded && !isBusy { collapse() } else { requestTextFocus() }
+    }
+
+    func collapseIfIdle() {
+        guard !isBusy, !isHovering else { return }
+        collapse()
+    }
+
+    var isBusy: Bool {
+        switch status {
+        case .listening, .thinking, .speaking, .connecting: return true
+        default: return isCapturing
         }
     }
 
-    /// True push-to-talk: called on key-down, starts live streaming speech
-    /// recognition immediately. Every partial transcript update is shown live
-    /// and (debounced) sent to /api/voice_tick, which can act mid-sentence —
-    /// there is no "record the whole thing, then send" step anymore. Safe to
-    /// call repeatedly for a single hold — no-ops past the first call.
+    func toggleVoiceCapture() {
+        if isCapturing { endVoiceCapture() } else { beginVoiceCapture() }
+    }
+
+    private func scheduleAutoCollapse() {
+        cancelAutoCollapse()
+        guard isExpanded, !isHovering, !isTyping, !isBusy else { return }
+        autoCollapseTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.autoCollapseNanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.collapseIfIdle()
+        }
+    }
+
+    private func cancelAutoCollapse() {
+        autoCollapseTask?.cancel()
+        autoCollapseTask = nil
+    }
+
+    private func pushLevel(_ level: Float) {
+        levels.removeFirst()
+        levels.append(level)
+    }
+
+    func start() {
+        Task { _ = await ensureConnected() }
+    }
+
+    private func ensureConnected() async -> String? {
+        if let sessionId { return sessionId }
+
+        if ServerLauncher.shared.isLocal {
+            activity = "Waking Eddy up…"
+            if !(await ServerLauncher.shared.ensureRunning()) {
+                status = .error("Couldn't start Eddy's local server — see ~/.edith/server.log")
+                activity = ""
+                return nil
+            }
+            activity = ""
+        }
+        do {
+            let id = try await client.connect()
+            sessionId = id
+            if case .error = status { status = .idle }
+            if case .connecting = status { status = .idle }
+            return id
+        } catch {
+            status = .error(Self.describe(error))
+            return nil
+        }
+    }
+
     func beginVoiceCapture() {
         guard !isCapturing else { return }
         isCapturing = true
-        isPanelVisible = true
+        cancelAutoCollapse()
+        expand()
         transcript = ""
         reply = ""
-        lastSentTranscript = ""
+        activity = ""
         status = .listening
         Task {
             do {
                 try await speechRecognizer.start(
                     onPartial: { [weak self] partial in
-                        // onPartial/onError are typed @Sendable (SpeechRecognizer.start
-                        // crosses a nonisolated closure boundary internally — see its doc
-                        // comment) — hop back explicitly rather than assuming the caller
-                        // already did, since the compiler can't see that SpeechRecognizer
-                        // always invokes these via Task { @MainActor }/assumeIsolated.
-                        Task { @MainActor in self?.handlePartial(partial) }
+
+                        Task { @MainActor in self?.transcript = partial }
+                    },
+                    onLevel: { [weak self] level in
+                        Task { @MainActor in self?.pushLevel(level) }
                     },
                     onError: { [weak self] message in
-                        // Previously silent: the recognition task's error case only
-                        // tore down internally, so a real recognition failure (e.g. the
-                        // on-device model unavailable) looked identical to "did nothing."
-                        Task { @MainActor in self?.status = .error("Speech recognition error: \(message)") }
+
+                        Task { @MainActor in
+                            guard let self, self.isCapturing else { return }
+                            self.status = .error("Speech recognition error: \(message)")
+                        }
                     }
                 )
             } catch {
@@ -88,83 +153,47 @@ final class WidgetViewModel: ObservableObject {
         }
     }
 
-    /// Called on key-up — stops live recognition and tells the server to
-    /// close out this voice-tick session (drop the pinned window/history).
-    /// Whatever needed to happen already happened tick by tick while you
-    /// were talking; there's nothing left to upload.
     func endVoiceCapture() {
         guard isCapturing else { return }
         isCapturing = false
-        speechRecognizer.stop()
-        pendingTickTask?.cancel()
-        pendingTickTask = nil
-        if let sessionId {
-            Task { try? await client.voiceTickEnd(sessionId: sessionId) }
-        }
-        if case .error = status {
-            // leave the error visible
-        } else {
-            status = .idle
-        }
-    }
+        Task {
+            try? await Task.sleep(nanoseconds: Self.trailingListenNanoseconds)
+            speechRecognizer.stop()
+            levels = Array(repeating: 0, count: Self.levelHistory)
+            let heard = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    private func handlePartial(_ text: String) {
-        transcript = text
-        pendingTickTask?.cancel()
-        pendingTickTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.tickDebounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            await self?.sendTick(text)
-        }
-    }
-
-    private func sendTick(_ text: String) async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, text != lastSentTranscript else { return }
-        guard let sessionId else { return }
-        lastSentTranscript = text
-        do {
-            let result = try await client.voiceTick(sessionId: sessionId, transcript: text)
-            applyTick(result)
-        } catch {
-            status = .error(Self.describe(error))
-        }
-    }
-
-    /// Surfaces each tick's outcome live: an executed action briefly shows
-    /// its result, then — if still capturing — settles back to "listening"
-    /// so the pill reflects that Edith is still with you, not that the turn
-    /// is over (there is no "turn" here, just a continuous session).
-    private func applyTick(_ result: VoiceTickResult) {
-        guard isCapturing else { return } // hold already ended; ignore a late in-flight tick
-        if result.blocked {
-            reply = result.message
-            status = .error(result.message)
-            return
-        }
-        if result.executed || result.done {
-            reply = result.message
-            status = .speaking(result.message)
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 900_000_000)
-                guard let self, self.isCapturing else { return }
-                if case .speaking = self.status { self.status = .listening }
+            if heard.isEmpty, case .error = status { return }
+            if heard.isEmpty {
+                status = .idle
+                scheduleAutoCollapse()
+            } else {
+                sendTyped(heard)
             }
         }
-        // WAIT / not-complete-enough-yet ticks: no status change beyond the
-        // live transcript, which handlePartial already updated.
+    }
+
+    func stopWork() {
+        if isCapturing {
+            isCapturing = false
+            speechRecognizer.stop()
+            levels = Array(repeating: 0, count: Self.levelHistory)
+            status = .idle
+            return
+        }
+        guard case .thinking = status else { return }
+        activity = "Stopping…"
+        Task { try? await client.stop() }
     }
 
     func sendTyped(_ text: String) {
-        guard let sessionId else {
-            status = .error("Not connected")
-            return
-        }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         transcript = text
         reply = ""
+        activity = ""
         status = .thinking
+        cancelAutoCollapse()
         Task {
+            guard let sessionId = await ensureConnected() else { return }
             do {
                 for try await event in client.sendText(sessionId: sessionId, text: text) {
                     apply(event)
@@ -176,11 +205,9 @@ final class WidgetViewModel: ObservableObject {
         }
     }
 
-    /// The backend silently drops a turn with no further events (e.g. audio
-    /// transcribed to empty text) — without this the pill would stay stuck on
-    /// "thinking" forever since no terminal event ever arrives.
     private func settleIfStillBusy() {
         if case .thinking = status { status = .idle }
+        scheduleAutoCollapse()
     }
 
     private func apply(_ event: SSEEvent) {
@@ -189,9 +216,10 @@ final class WidgetViewModel: ObservableObject {
             transcript = text
         case .status(let text):
             status = .thinking
-            reply = text
+            activity = text
         case .text(let text):
             reply = text
+            activity = ""
             status = .speaking(text)
         case .session(let id):
             sessionId = id
@@ -204,6 +232,7 @@ final class WidgetViewModel: ObservableObject {
             Task {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 if case .speaking = self.status { self.status = .idle }
+                self.scheduleAutoCollapse()
             }
         }
     }

@@ -1,10 +1,5 @@
 import AppKit
 
-// Bare-modifier shortcuts (Control+Option with no other key, like Raycast's
-// push-to-talk) can't be expressed with Carbon's RegisterEventHotKey, which
-// requires a virtual key code. Watching NSEvent.flagsChanged and diffing the
-// modifier set on each transition is the standard way to catch these globally.
-// Requires the app to be granted Input Monitoring in System Settings > Privacy.
 @MainActor
 final class HotKeyManager {
     static let shared = HotKeyManager()
@@ -14,27 +9,41 @@ final class HotKeyManager {
     private var pressBindings: [UInt: () -> Void] = [:]
     private var holdBindings: [UInt: (press: () -> Void, release: () -> Void)] = [:]
 
+    private static let chordModifiers: NSEvent.ModifierFlags = [.control, .option, .command, .shift]
+
     private init() {}
 
-    /// Fires `action` the moment the flags transition to exactly `modifiers` pressed.
-    /// Release is not observed — use `onModifierHold` for press/release pairs.
     func onModifierCombo(_ modifiers: NSEvent.ModifierFlags, action: @escaping () -> Void) {
         pressBindings[modifiers.rawValue] = action
         if monitor == nil { startMonitoring() }
     }
 
-    /// True hold semantics: `onPress` fires the instant flags become exactly
-    /// `modifiers`, `onRelease` fires the instant they stop being exactly
-    /// `modifiers` (whether released cleanly or superseded by another key
-    /// combo) — no second activation of the same combo needed to "stop".
     func onModifierHold(_ modifiers: NSEvent.ModifierFlags, onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
         holdBindings[modifiers.rawValue] = (onPress, onRelease)
         if monitor == nil { startMonitoring() }
     }
 
+    private var keyDownMonitor: Any?
+
+    func onKeyDown(_ keyCode: UInt16, action: @escaping () -> Void) {
+        keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == keyCode else { return }
+            Task { @MainActor in action() }
+        }
+    }
+
+    private var localMonitor: Any?
+
     private func startMonitoring() {
+
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            let flags = event.modifierFlags.intersection(HotKeyManager.chordModifiers).rawValue
+            Task { @MainActor in self?.handle(flags) }
+            return event
+        }
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).rawValue
+
+            let flags = event.modifierFlags.intersection(HotKeyManager.chordModifiers).rawValue
             Task { @MainActor in self?.handle(flags) }
         }
     }
@@ -48,7 +57,4 @@ final class HotKeyManager {
         if let action = pressBindings[flags] { action() }
     }
 
-    // HotKeyManager.shared lives for the process lifetime; deinit never runs, and
-    // Swift 6 disallows touching the non-Sendable `Any?` monitor token from a
-    // (necessarily nonisolated) deinit anyway.
 }

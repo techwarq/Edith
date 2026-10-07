@@ -1,19 +1,18 @@
 import Foundation
 
-// Mirrors edith-desktop/main.js's resolveToken()/SERVER_URL resolution so this
-// widget talks to the exact same backend with zero setup when run from the repo.
 enum Config {
     static let defaultServerURL = "https://edith-production-d100.up.railway.app"
 
     private static let configPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".edith/desktop_config.json")
 
-    private static let dashboardEnvPath = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent() // Config.swift -> EdithWidget/
-        .deletingLastPathComponent() // -> Sources/
-        .deletingLastPathComponent() // -> edith-widget/
-        .deletingLastPathComponent() // -> edith/ (repo root)
-        .appendingPathComponent("edith-dashboard/.env.local")
+    static let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+
+    private static let dashboardEnvPath = repoRoot.appendingPathComponent("edith-dashboard/.env.local")
 
     private static var jsonConfig: [String: String] {
         guard let data = try? Data(contentsOf: configPath),

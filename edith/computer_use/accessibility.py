@@ -1,14 +1,3 @@
-"""macOS Accessibility (AXUIElement) access, written directly against the
-PyObjC bindings for Apple's own ApplicationServices/Cocoa/Quartz frameworks —
-no third-party computer-use library. Everything the perceive/decide/act loop
-needs to read the screen and act on it lives here: running apps and windows,
-a bounded walk of one window's element tree, and click/type/press/activate.
-
-Unlike a subprocess-based tool, elements stay as live AXUIElementRef objects
-in memory for the lifetime of one loop run — there is no token-serialization
-problem to solve, since nothing crosses a process boundary.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -20,8 +9,6 @@ import AppKit
 import ApplicationServices as AX
 import Quartz
 
-# Roles worth surfacing to the decision model — containers (groups, scroll
-# areas, splitters, ...) are walked through but never offered as targets.
 ACTIONABLE_ROLES = frozenset(
     {
         "AXButton",
@@ -42,29 +29,17 @@ ACTIONABLE_ROLES = frozenset(
     }
 )
 EDITABLE_ROLES = frozenset({"AXTextField", "AXTextArea", "AXComboBox"})
-# Window-chrome buttons (traffic lights) — never a legitimate click target for
-# a goal, and a synthetic click landing on one is how a whole window
-# disappears out from under the loop.
 WINDOW_CHROME_SUBROLES = frozenset({"AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"})
-# Defense in depth for the same failure mode where the control isn't a real
-# traffic-light button but a web/tab-strip "Close" that reports no subrole —
-# exact-match only, so this can't accidentally hide unrelated content that
-# merely contains the word (e.g. a "Close friends" list item).
 BLOCKED_LABELS = frozenset({"close", "close tab", "close window", "minimize", "minimize window"})
 
 MAX_ELEMENTS = 80
 MAX_DEPTH = 12
 MAX_CHILDREN_PER_NODE = 60
-MAX_NODES_VISITED = 3000  # a big Chromium/Electron tree can have tens of thousands of nodes
+MAX_NODES_VISITED = 3000
 WALK_TIME_BUDGET_SECONDS = 1.5
-# Roles whose own label should be inherited by an unlabeled child one level down — a bare
-# decorative AXImage inside an AXButton, not a separate control in its own right.
 LABEL_PARENT_ROLES = frozenset({"AXButton", "AXCell", "AXCheckBox", "AXLink", "AXMenuButton", "AXPopUpButton", "AXRadioButton", "AXRow", "AXTab"})
-# List/table rows keep their label in a shallow AXStaticText child rather than on themselves.
 LABEL_DESCENDANT_ROLES = frozenset({"AXCell", "AXRow"})
 MIN_CLICKABLE_SIDE = 4.0
-# A real content window is never this thin — anything shorter/narrower is a
-# toolbar/findbar/notification-bar sliver, not something a goal ever targets.
 MIN_WINDOW_SIDE = 100.0
 
 
@@ -77,9 +52,6 @@ def is_trusted() -> bool:
 
 
 def request_trust() -> bool:
-    """Triggers the system Accessibility permission dialog if not already
-    granted. Returns the current (pre-grant) trust state — macOS never grants
-    synchronously, the user has to click through System Settings."""
     return bool(AX.AXIsProcessTrustedWithOptions({AX.kAXTrustedCheckOptionPrompt: True}))
 
 
@@ -126,42 +98,40 @@ class AppInfo:
     active: bool
 
 
+def frontmost_pid() -> Optional[int]:
+    options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
+    for w in Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID) or []:
+        if w.get("kCGWindowLayer") == 0:
+            return int(w.get("kCGWindowOwnerPID"))
+    return None
+
+
 def running_apps() -> list[AppInfo]:
-    """NSWorkspace-level — no Accessibility permission required."""
+    front = frontmost_pid()
+    seen: set[int] = set()
     apps = []
-    for app in AppKit.NSWorkspace.sharedWorkspace().runningApplications():
+    for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionAll, Quartz.kCGNullWindowID) or []:
+        pid = int(w.get("kCGWindowOwnerPID", 0))
+        if pid in seen:
+            continue
+        seen.add(pid)
+        app = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is None or app.isTerminated():
+            continue
         if app.activationPolicy() != AppKit.NSApplicationActivationPolicyRegular:
-            continue  # skip background/UI-less processes — not something a goal would ever target
+            continue
         apps.append(
             AppInfo(
-                pid=app.processIdentifier(),
+                pid=pid,
                 name=app.localizedName() or "",
                 bundle_id=app.bundleIdentifier() or "",
-                active=bool(app.isActive()),
+                active=pid == front,
             )
         )
     return apps
 
 
 def launch_app(name: str, timeout: float = 15.0) -> bool:
-    """Launches an app that isn't running yet, via macOS's own `open -a` —
-    the same mechanism Finder/Spotlight use to open an app by name, so no
-    knowledge of its bundle path is needed. `open` returns as soon as the
-    launch request is *accepted*, well before the app has actually started
-    and drawn a window, so this polls running_apps()/_has_onscreen_windows
-    until it's really up rather than trusting the command's return alone.
-    Generous default timeout — a cold Electron-app start (Slack, Spotify)
-    restoring its last session can genuinely take 10+ seconds.
-
-    Confirmed live: an app that restores its window on a different Space
-    (or otherwise starts non-frontmost) can fail to show up under
-    kCGWindowListOptionOnScreenOnly even once its window is real and fully
-    drawn. activate_app is what surfaces it — but a single early call (the
-    moment the process first appears, before it's created any window at
-    all) doesn't reliably stick once the window shows up moments later;
-    only a fresh activate_app call issued *after* the window exists
-    reliably brings it onscreen. So this nudges periodically while
-    waiting, not just once."""
     try:
         subprocess.run(["open", "-a", name], check=True, capture_output=True, timeout=5)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
@@ -184,12 +154,6 @@ def launch_app(name: str, timeout: float = 15.0) -> bool:
 
 
 def activate_app(pid: int, timeout: float = 2.0) -> bool:
-    """AppleScript's `activate` command, not NSRunningApplication directly —
-    activateWithOptions_ proved unreliable when called from a bare Python
-    subprocess (no real window/focus of its own to hand off from), the same
-    reason a real automation tool goes through the scripting bridge instead.
-    Polls NSWorkspace's frontmostApplication for confirmation afterward,
-    since activation is asynchronous either way."""
     running = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
     if running is None:
         return False
@@ -209,12 +173,10 @@ def activate_app(pid: int, timeout: float = 2.0) -> bool:
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
-        if front is not None and front.processIdentifier() == pid:
+        if frontmost_pid() == pid:
             return True
         time.sleep(0.05)
-    front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
-    return front is not None and front.processIdentifier() == pid
+    return frontmost_pid() == pid
 
 
 @dataclass(frozen=True)
@@ -223,13 +185,10 @@ class WindowInfo:
     title: str
     main: bool
     minimized: bool
-    frame: Optional[tuple[float, float, float, float]]  # x, y, w, h
+    frame: Optional[tuple[float, float, float, float]]
 
 
 def _has_onscreen_windows(pid: int) -> bool:
-    """Ground truth from the window server, not the AX bridge — used only to
-    decide whether kAXWindowsAttribute coming back empty is worth retrying
-    (real flakiness) or correct (the app genuinely has no windows)."""
     options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
     for w in Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID) or []:
         if w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowLayer") == 0:
@@ -238,13 +197,9 @@ def _has_onscreen_windows(pid: int) -> bool:
 
 
 def windows(pid: int, retries: int = 3, retry_delay: float = 0.15) -> list[WindowInfo]:
-    """kAXWindowsAttribute has observed transient flakiness — reporting zero
-    windows for an app that (per the window server, checked independently)
-    genuinely has some on screen — so an empty first read is retried a few
-    times before being trusted, rather than treated as ground truth."""
     _require_trust()
     app_element = AX.AXUIElementCreateApplication(pid)
-    AX.AXUIElementSetMessagingTimeout(app_element, 0.3)  # bound one slow/hung call instead of stalling the loop
+    AX.AXUIElementSetMessagingTimeout(app_element, 0.3)
 
     raw_windows = _attr(app_element, AX.kAXWindowsAttribute) or []
     attempt = 0
@@ -255,11 +210,6 @@ def windows(pid: int, retries: int = 3, retry_delay: float = 0.15) -> list[Windo
 
     result = []
     for w in raw_windows:
-        # kAXWindowsAttribute has been observed (Brave/Chromium) to include
-        # elements that aren't real windows at all — a toolbar/findbar
-        # sliver a few dozen points tall, even a stray AXHelpTag tooltip —
-        # which would otherwise get offered as a pin/disambiguation target
-        # indistinguishable from the actual browser window.
         if _attr(w, AX.kAXRoleAttribute) != AX.kAXWindowRole:
             continue
         pos = _point(_attr(w, AX.kAXPositionAttribute))
@@ -281,12 +231,6 @@ def windows(pid: int, retries: int = 3, retry_delay: float = 0.15) -> list[Windo
 
 @dataclass(frozen=True)
 class PinnedWindow:
-    """A single window locked in once at the start of a run. Every later
-    step re-verifies against this exact AXUIElement (see refresh_pinned) —
-    never against "whichever window happens to be frontmost right now",
-    which is what let the loop drift onto the wrong window whenever the
-    user's own activity, or the loop's own actions, changed what was
-    frontmost mid-task."""
 
     id: str
     pid: int
@@ -297,12 +241,6 @@ class PinnedWindow:
 
 
 def scriptable_window_titles(app_name: str) -> Optional[list[str]]:
-    """Best-effort: apps with a real AppleScript window dictionary (browsers,
-    Finder, Mail, ...) report every window's true title through their own
-    scripting bridge, even for a background member of a native macOS
-    window-tab group that the Accessibility API reports as a blank sliver
-    until it's actually selected (see window_title). Returns None when the
-    app doesn't support this — callers fall back to raw AX enumeration."""
     name = app_name.replace('"', '\\"')
     script = (
         f'tell application "{name}"\n'
@@ -323,17 +261,6 @@ def scriptable_window_titles(app_name: str) -> Optional[list[str]]:
 
 
 def select_scriptable_window(app_name: str, title: str) -> bool:
-    """Selects a window by exact title, through the app's own scripting
-    bridge — the general equivalent of clicking its native window-tab,
-    which is what actually materializes it as a full AXWindow. AXRaise
-    alone does not select a background member of a native macOS window-tab
-    group; only the app itself (or a real click on the tab) does.
-
-    Selects by title, not by the position returned from
-    scriptable_window_titles — window z-order is live state that can shift
-    between that read and this call (the user's own activity, another
-    window losing focus), so a positional index resolved a moment ago can
-    already point at a different window by the time this runs."""
     name = app_name.replace('"', '\\"')
     title_escaped = title.replace('"', '\\"')
     script = f'tell application "{name}" to set index of (first window whose title is "{title_escaped}") to 1'
@@ -345,12 +272,6 @@ def select_scriptable_window(app_name: str, title: str) -> bool:
 
 
 def window_title(window: WindowInfo, settle_seconds: float = 0.15) -> str:
-    """Chromium/Electron apps only populate a background window's AX title
-    (and other attributes) once it's raised — kAXTitleAttribute reads back
-    empty for every window but the currently-focused one. Disambiguating
-    windows by title therefore needs a brief raise-and-read rather than a
-    cheap attribute read, or every background window looks identically
-    blank."""
     if window.title:
         return window.title
     _perform(window.element, AX.kAXRaiseAction)
@@ -359,9 +280,6 @@ def window_title(window: WindowInfo, settle_seconds: float = 0.15) -> str:
 
 
 def pin_window(app: AppInfo, window: WindowInfo) -> PinnedWindow:
-    """Locks onto one already-chosen window, once. Nothing after this
-    re-queries "what's frontmost" — later steps call
-    refresh_pinned/raise_pinned against the returned element."""
     _perform(window.element, AX.kAXRaiseAction)
     return PinnedWindow(
         id=f"{app.bundle_id or app.name}:{app.pid}",
@@ -374,11 +292,6 @@ def pin_window(app: AppInfo, window: WindowInfo) -> PinnedWindow:
 
 
 def refresh_pinned(pinned: PinnedWindow) -> Optional[WindowInfo]:
-    """Ground truth for "is the window I locked onto still open" — matched
-    by AX identity (CFEqual on the AXUIElementRef), not by title (which
-    changes the moment the page navigates) and not by re-scanning for
-    whatever's frontmost now. Returns None once the window is truly gone;
-    callers must stop rather than hunt for a replacement."""
     for w in windows(pinned.pid):
         if AX.CFEqual(w.element, pinned.element):
             return w
@@ -386,18 +299,11 @@ def refresh_pinned(pinned: PinnedWindow) -> Optional[WindowInfo]:
 
 
 def raise_pinned(pinned: PinnedWindow) -> None:
-    """Brings the pinned window forward before each snapshot/action. This is
-    an assertion ("THIS window is what I'm about to look at and act on"),
-    not a "what's frontmost" read — both the OCR screenshot and synthetic
-    clicks operate on absolute screen coordinates, which land on the wrong
-    app if another window is on top."""
     activate_app(pinned.pid)
     _perform(pinned.element, AX.kAXRaiseAction)
 
 
 def scroll(point: tuple[float, float], lines: int) -> None:
-    """Synthetic scroll-wheel event at `point` (typically the pinned
-    window's center) — positive `lines` scrolls up, negative scrolls down."""
     event = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, lines)
     Quartz.CGEventSetLocation(event, point)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
@@ -432,10 +338,6 @@ def _frame_of(node: Any) -> Optional[tuple[float, float, float, float]]:
 
 
 def _off_display(frame: Optional[tuple[float, float, float, float]], display_w: float, display_h: float) -> bool:
-    """A real frame lying wholly outside the display is a background tab's
-    stale layout or a node parked off-canvas — not something to offer as a
-    click target. A frameless/zero-size node (a container) is never
-    considered off-display; it still needs its subtree walked."""
     if frame is None:
         return False
     x, y, w, h = frame
@@ -445,8 +347,6 @@ def _off_display(frame: Optional[tuple[float, float, float, float]], display_w: 
 
 
 def _descendant_label(children: list, fanout: int = 8) -> str:
-    """The first static text within two levels — where list rows/table cells
-    usually hide their label instead of carrying it themselves."""
     for kid in children[:fanout]:
         if _attr(kid, AX.kAXRoleAttribute) == "AXStaticText":
             text = _own_label(kid)
@@ -463,27 +363,13 @@ def _descendant_label(children: list, fanout: int = 8) -> str:
 
 
 def walk_elements(window_element: Any, max_elements: int = MAX_ELEMENTS) -> list[ElementInfo]:
-    """Breadth-first walk of one window's accessibility tree, bounded by node
-    count and wall-clock time so a deeply nested app (a browser with dozens
-    of tabs, an Electron app) can't stall the loop or flood the result with
-    duplicates. Returns only actionable, on-screen elements — everything
-    else is just structure.
-
-    Two things a naive walk gets wrong on real apps, both fixed here:
-    - The same control often appears more than once in the tree (a button
-      wrapping an image that reports the same role/label/frame) — deduped by
-      (role, label, rounded frame).
-    - Many controls (icon buttons, list rows) report no label of their own —
-      recovered from a labeled parent or a descendant AXStaticText, instead
-      of showing up as a useless blank entry.
-    """
     _require_trust()
     display_bounds = Quartz.CGDisplayBounds(Quartz.CGMainDisplayID())
     display_w, display_h = display_bounds.size.width, display_bounds.size.height
 
     found: list[ElementInfo] = []
     seen_keys: set[tuple] = set()
-    frontier: list[tuple[Any, str]] = [(window_element, "")]  # (node, inherited label)
+    frontier: list[tuple[Any, str]] = [(window_element, "")]
     depth = 0
     visited = 0
     deadline = time.monotonic() + WALK_TIME_BUDGET_SECONDS
@@ -541,14 +427,7 @@ def walk_elements(window_element: Any, max_elements: int = MAX_ELEMENTS) -> list
     return found
 
 
-# --- actions -----------------------------------------------------------
-
 def click(ax_element: Optional[Any], frame: Optional[tuple[float, float, float, float]]) -> str:
-    """AXPress first (works for native buttons/links/menu items) when there's
-    a real element to press; a synthetic mouse click at the frame's center
-    otherwise — the only option for OCR-only items (perception.py), and a
-    fallback for elements that don't implement AXPress (common in web
-    content)."""
     if ax_element is not None and _perform(ax_element, AX.kAXPressAction):
         return "clicked"
     if not frame:
@@ -567,10 +446,6 @@ def _synthetic_click(point: tuple[float, float]) -> None:
 
 
 def set_text(ax_element: Optional[Any], frame: Optional[tuple[float, float, float, float]], text: str) -> str:
-    """AXUIElementSetAttributeValue first (works for native text fields) when
-    there's a real element; click-to-focus + synthetic keystrokes otherwise —
-    the only option for OCR-only items, and a fallback for elements (mostly
-    web content) that reject a direct value set."""
     if ax_element is not None and _set_attr(ax_element, AX.kAXValueAttribute, text):
         return "set value"
     click(ax_element, frame)
@@ -580,8 +455,6 @@ def set_text(ax_element: Optional[Any], frame: Optional[tuple[float, float, floa
 
 
 def type_text(text: str) -> None:
-    """Synthesizes keystrokes for arbitrary Unicode text via a single
-    keyboard event pair — no per-character keycode mapping needed."""
     down = Quartz.CGEventCreateKeyboardEvent(None, 0, True)
     Quartz.CGEventKeyboardSetUnicodeString(down, len(text), text)
     up = Quartz.CGEventCreateKeyboardEvent(None, 0, False)
@@ -597,6 +470,10 @@ _KEYCODES = {
     "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
     "return": 36, "tab": 48, "space": 49, "delete": 51, "escape": 53,
     "left": 123, "right": 124, "down": 125, "up": 126,
+    "enter": 36, "backspace": 51, "esc": 53, "forwarddelete": 117,
+    "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
+    ".": 47, ",": 43, "/": 44, "-": 27, "=": 24, "[": 33, "]": 30,
+    ";": 41, "'": 39, "`": 50, "\\": 42,
 }
 _MODIFIERS = {
     "cmd": Quartz.kCGEventFlagMaskCommand,
@@ -611,8 +488,6 @@ _MODIFIERS = {
 
 
 def press_key(combo: str) -> None:
-    """Synthesizes a keyboard shortcut like 'cmd+l' or 'return' to whatever
-    application is currently frontmost — matching how a real keypress works."""
     parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
     if not parts:
         raise AccessibilityError(f"empty key combination: {combo!r}")

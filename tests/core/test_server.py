@@ -1,11 +1,4 @@
-"""Tests for edith/server.py's _latest_job_reply (powers POST /api/jobs/latest,
-the notification tap-to-open-and-speak flow). Importing edith.server builds a
-real AppContext at module scope (same as running the actual server), so this
-relies on real .env credentials being present, like every other manual run of
-this project — there's no CI here, and no other test file imports server.py
-for the same reason. store/voice calls inside it are monkeypatched so no real
-API calls happen in the test itself.
-"""
+import pytest
 
 import edith.server as server
 from edith.integrations.voice import VoiceError
@@ -55,3 +48,16 @@ def test_latest_job_reply_tts_failure_falls_back_to_text_only(monkeypatch):
     result = server._latest_job_reply()
 
     assert result == {"content": "Top startup news today...", "audio_base64": None, "mime_type": None}
+
+
+@pytest.mark.parametrize(
+    "text,is_stop",
+    [
+        ("stop", True), ("u can stop", True), ("You can stop.", True), ("ok stop now", True),
+        ("Eddy, stop!", True), ("cancel that", True), ("hold on", True),
+        ("stop the music", False), ("stop playing spotify and open slack", False),
+        ("can you stop by the store", False), ("apply to yc", False),
+    ],
+)
+def test_stop_intent_only_matches_pure_stop_messages(text, is_stop):
+    assert bool(server._STOP_INTENT.match(text)) is is_stop

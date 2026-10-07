@@ -1,27 +1,9 @@
-"""Hosted API — the network equivalent of cli.py's terminal REPL.
-
-Each turn (a typed message or a recorded voice clip) is one POST request
-that gets back a text/event-stream response: the server does its work
-(agent reply, optional transcription, optional TTS) and streams a few SSE
-events before closing. There is no persistent connection between turns —
-deliberately simpler than the previous /ws WebSocket design, which needed a
-keepalive ping loop to stop Railway's proxy from dropping an idle connection
-and was still closing early. Since nothing here needs real-time duplex
-voice-to-voice (mic input is a full clip, not a live stream), a short-lived
-per-request connection has nothing to time out.
-
-agent.handle_turn() and handle_command() are synchronous, blocking calls
-(they make real HTTP requests to OpenRouter/Google/etc.) — run via
-asyncio.to_thread() so a slow LLM call doesn't block the event loop.
-voice.transcribe()/synthesize() are the same kind of blocking call and get
-the same treatment.
-"""
-
 import asyncio
 import base64
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -45,6 +27,7 @@ from edith.temporal import api as deep_research_api
 from edith.todos import api as todos_api
 from edith.integrations.voice import VoiceError
 from edith.integrations.linkedin import api as linkedin_api
+from edith.computer_use import operator
 from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
 from edith.computer_use.voice_loop import SITES, VoiceTickSession
 from edith.computer_use.writer import make_writer_client
@@ -77,10 +60,6 @@ app.include_router(linkedin_api.build_router(ctx.conn, ctx.genai_client, API_TOK
 
 @app.middleware("http")
 async def no_cache_web_assets(request: Request, call_next):
-    """The Android app (Capacitor) and browsers otherwise cache index.html/app.js
-    across restarts, so a deploy that changes the frontend's transport (e.g. the
-    WebSocket -> SSE switch) can silently keep running the stale cached JS against
-    a server that no longer has the old routes. Force revalidation on every load."""
     response = await call_next(request)
     if request.url.path in ("/", "/index.html", "/app.js"):
         response.headers["Cache-Control"] = "no-store"
@@ -94,16 +73,12 @@ async def health() -> dict:
 
 @app.get("/whatsapp-qr", response_model=None)
 async def whatsapp_qr(token: str = "") -> FileResponse | JSONResponse:
-    # Token-protected: this serves a live WhatsApp Web login QR code — anyone who
-    # scans it before you do could link a device to your account.
     if not API_TOKEN or token != API_TOKEN:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if not WHATSAPP_QR_PATH.exists():
         return JSONResponse(
             {"error": "No QR code available yet — send /whatsapp login in the chat first."}, status_code=404
         )
-    # no-store: the QR expires in ~20-30s and a fresh /whatsapp login overwrites this same
-    # file, so a cached browser response could silently keep showing an old, dead QR code.
     return FileResponse(str(WHATSAPP_QR_PATH), media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
@@ -123,14 +98,9 @@ async def connect(request: Request) -> JSONResponse:
 
 
 def _store_health_metrics(metrics: list[dict]) -> int:
-    """Runs on a worker thread (see the endpoint below) — plain sync SQLite
-    calls, same pattern as every other blocking call in this file."""
     written = health_metrics.store_metrics(ctx.conn, metrics)
     latest_weight = next((m for m in reversed(metrics) if m.get("type") == "weight"), None)
     if latest_weight:
-        # Keeps the latest weight visible in the system prompt's profile block
-        # without Edith needing to call a tool for basic "what's my weight" context —
-        # same pattern used for every other durable fact (see edith/tools/productivity/notes.py).
         store.save_fact(
             ctx.conn,
             key="current_weight",
@@ -166,11 +136,6 @@ async def register_device(request: Request) -> JSONResponse:
 
 
 def _latest_job_reply() -> dict:
-    """Runs on a worker thread (see the endpoint below) — same blocking-call
-    pattern as every other sync helper in this file. Powers the notification
-    tap-to-open-and-speak flow: fetches the most recent scheduled-job output
-    and synthesizes it, reusing the exact same voice pipeline _handle_turn's
-    voice_enabled branch already uses for normal chat replies."""
     session_id = store.get_or_create_jobs_session(ctx.conn, settings.model)
     replies = store.get_recent_assistant_replies(ctx.conn, session_id, 1)
     if not replies:
@@ -203,22 +168,13 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-# X-Accel-Buffering: no stops nginx-style proxies (Railway's edge included) from
-# buffering the whole response before forwarding it — without it, heartbeats
-# below wouldn't reach the client until the stream closed, defeating the point.
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
-SSE_HEARTBEAT_SECONDS = 15  # some slash commands (e.g. /whatsapp login) block for
-# minutes waiting on something external (a QR scan). A plain SSE comment line
-# every few seconds keeps bytes flowing so Railway's proxy doesn't treat the
-# connection as idle and kill it before the blocking call finishes.
+SSE_HEARTBEAT_SECONDS = 15
 
 
 async def _heartbeat_until_done(task: "asyncio.Task") -> AsyncIterator[str]:
-    """Yields SSE comment-line heartbeats while task is in flight. Comment
-    lines (":...") are ignored by SSE clients — they exist only to keep bytes
-    flowing. Caller reads the real result via task.result() once this returns."""
     while not task.done():
         done, _ = await asyncio.wait({task}, timeout=SSE_HEARTBEAT_SECONDS)
         if not done:
@@ -226,15 +182,6 @@ async def _heartbeat_until_done(task: "asyncio.Task") -> AsyncIterator[str]:
 
 
 class _ProgressRunner:
-    """Runs func(*args, on_progress=...) in a thread and surfaces live "what is
-    Edith doing" status as real SSE "status" events (e.g. "Searching the web")
-    instead of silent keepalives — on_progress pushes status strings onto a
-    queue from the worker thread; .events() drains that queue and forwards
-    each one to the client as soon as it arrives, falling back to a plain
-    heartbeat when nothing's been reported in a while. The task is exposed as
-    an attribute so the caller can read the real return value via
-    self.task.result() once .events() is exhausted (an async generator can't
-    itself return a value)."""
 
     def __init__(self, func, *args) -> None:
         loop = asyncio.get_running_loop()
@@ -293,12 +240,6 @@ async def audio(request: Request) -> StreamingResponse | JSONResponse:
     return StreamingResponse(_handle_audio(session_id, data, mime_type), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
-
-# Per-session VoiceTickSession, keyed by the same session_id /api/connect
-# hands out — holds a live pinned-window AXUIElement across ticks, which
-# can't be persisted to the DB like the rest of session state (store.py)
-# anyway, so an in-memory dict is the natural fit here, same tier as
-# runner.py's own local-machine-only design.
 _voice_tick_sessions: dict[str, VoiceTickSession] = {}
 
 
@@ -320,11 +261,6 @@ def _get_voice_tick_session(session_id: str) -> VoiceTickSession:
 
 @app.post("/api/voice_tick", response_model=None)
 async def voice_tick(request: Request) -> JSONResponse:
-    """One tick of the fixed-questions/live-state voice loop (see
-    edith/computer_use/voice_loop.py) — a fast single round trip, not an
-    agent turn, so plain JSON rather than SSE. Called repeatedly (debounced
-    client-side to ~180-200ms) with the growing transcript for one
-    continuous Control-hold session."""
     body = await request.json()
     if (err := _unauthorized(body)) is not None:
         return err
@@ -342,9 +278,6 @@ async def voice_tick(request: Request) -> JSONResponse:
 
 @app.post("/api/voice_tick_end", response_model=None)
 async def voice_tick_end(request: Request) -> JSONResponse:
-    """Called when Control is released — discards the session's pinned
-    window/history so the next hold starts clean rather than continuing to
-    act on whatever window the previous hold left pinned."""
     body = await request.json()
     if (err := _unauthorized(body)) is not None:
         return err
@@ -353,11 +286,20 @@ async def voice_tick_end(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/stop", response_model=None)
+async def stop(request: Request) -> JSONResponse:
+    body = await request.json()
+    if (err := _unauthorized(body)) is not None:
+        return err
+    operator.request_stop()
+    return JSONResponse({"ok": True})
+
+
 async def _handle_audio(session_id: str, data: str, mime_type: str) -> AsyncIterator[str]:
     try:
         audio_bytes = base64.b64decode(data)
         ext = mime_type.split("/")[-1].split(";")[0]
-        import pathlib, time  # noqa: PLC0415 — temporary debug capture, remove after diagnosis
+        import pathlib, time
         pathlib.Path(f"/tmp/edith-debug-audio-{int(time.time())}.{ext}").write_bytes(audio_bytes)
         text = await asyncio.to_thread(
             voice.transcribe, ctx.client, audio_bytes, settings.stt_model, f"recording.{ext}", mime_type
@@ -365,7 +307,7 @@ async def _handle_audio(session_id: str, data: str, mime_type: str) -> AsyncIter
     except VoiceError as e:
         yield _sse("text", {"content": f"(voice error: {e})"})
         return
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Failed to decode/transcribe incoming audio")
         yield _sse("text", {"content": "(voice error: could not process audio)"})
         return
@@ -378,7 +320,25 @@ async def _handle_audio(session_id: str, data: str, mime_type: str) -> AsyncIter
         yield event
 
 
+_STOP_INTENT = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|hey|eddy|edith|please|no|nope)\W+)*(?:you\s+can\s+|u\s+can\s+|just\s+)?"
+    r"(?:stop|cancel|abort|halt|enough|that'?s\s+enough|hold\s+on|pause)"
+    r"(?:\W+(?:it|that|now|please|eddy|edith|doing\s+that|working|everything|right\s+now))*\W*$",
+    re.IGNORECASE,
+)
+
+
 async def _handle_turn(session_id: str, text: str, voice_enabled: bool) -> AsyncIterator[str]:
+    if _STOP_INTENT.match(text):
+        was_running = operator.is_running()
+        operator.request_stop()
+        yield _sse(
+            "text",
+            {"content": "Stopping — I'll halt before my next click." if was_running else "Okay — nothing's running, I've stopped."},
+        )
+        return
+    operator.reset_stop()
+
     if text.startswith("/"):
         task = asyncio.create_task(
             asyncio.to_thread(handle_command, text, ctx.conn, settings, session_id, ctx.agent, voice_enabled)
@@ -417,13 +377,6 @@ async def _handle_turn(session_id: str, text: str, voice_enabled: bool) -> Async
 
 
 class _NoCacheStaticFiles(StaticFiles):
-    """Plain StaticFiles sends no explicit Cache-Control header, so browsers
-    (and Electron's Chromium) apply heuristic caching off Last-Modified —
-    which can serve a stale index.html/app.js/dashboard.js even across a
-    reload, well after a new version has been deployed (this happened for
-    real on 2026-07-29: the server had the fixed CSS, the client didn't).
-    no-store forces a full refetch every load — fine for a personal app's
-    handful of small JS/CSS files."""
 
     async def get_response(self, path: str, scope) -> Response:
         response = await super().get_response(path, scope)

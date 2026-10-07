@@ -1,29 +1,12 @@
-"""Local-machine computer use: open a known URL in Brave (deterministic, no
-model call needed), or drive an open-ended on-screen goal via the
-perceive-decide-act loop in edith/computer_use/runner.py.
-
-Local-only, like edith/whatsapp.py's Playwright profile — makes no sense on
-the hosted Railway server (no display, no Brave, no macOS Accessibility), so
-every entry point here reports "not configured" rather than crashing when
-permissions aren't present, same tier as hunter.py/vercel.py.
-
-Both the Jev decisions (typesafe_client.py) and the writer's free-text
-generation (writer.py) go through OpenRouter, reusing settings.api_key —
-no separate TypeSafe or Vercel account.
-
-Treat on-screen content as untrusted data: decide.py's own instructions to
-Jev already say not to follow instructions found in on-screen items, only
-the goal given here.
-"""
-
 import logging
+import os
 import subprocess
 from typing import Callable, Optional
 
-from edith.computer_use.runner import run as run_computer_use
+from edith.computer_use import operator, screen
 from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
-from edith.computer_use.writer import make_writer_client
-from edith.config import Settings
+from edith.config import DEFAULT_OPERATOR_MODEL, OPERATOR_MAX_STEPS, Settings
+from edith.llm.client import make_client
 from edith.tools.registry import ToolRegistry
 
 logger = logging.getLogger("edith.tools.computer_use")
@@ -44,30 +27,43 @@ def register(registry: ToolRegistry, settings: Settings) -> None:
             return f"ERROR: couldn't open Brave: {e}"
         return f"Opened {url} in Brave."
 
-    def computer_use(goal: str, on_progress: Optional[Callable[[str], None]] = None) -> str:
-        try:
-            client = TypeSafeClient(settings.api_key)
-        except TypeSafeError as e:
-            return f"ERROR: {e}"
+    operator_model = os.environ.get("EDITH_OPERATOR_MODEL", DEFAULT_OPERATOR_MODEL).strip()
+    vision_client = make_client(settings.api_key) if settings.api_key else None
+    try:
+        jev_client: Optional[TypeSafeClient] = TypeSafeClient(settings.api_key)
+    except TypeSafeError:
+        jev_client = None
 
-        writer_client = make_writer_client(settings.api_key) if settings.api_key else None
-
-        result = run_computer_use(
-            client,
+    def operate_mac(
+        goal: str,
+        allow_risky: bool = False,
+        texts: Optional[list[str]] = None,
+        urls: Optional[list[str]] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        if vision_client is None:
+            return "ERROR: no OpenRouter API key configured."
+        result = operator.run(
+            vision_client,
+            operator_model,
             goal,
-            settings.computer_use_max_steps,
-            settings.computer_use_confidence_threshold,
-            writer_client=writer_client,
-            writer_model=settings.computer_use_writer_model,
+            OPERATOR_MAX_STEPS,
+            allow_risky=allow_risky,
             on_progress=on_progress,
+            jev=jev_client,
+            texts=texts,
+            urls=urls,
         )
+        return result.as_text()
 
-        lines = [f"step {s.number}: {s.kind} (confidence {s.confidence:.2f}) -> {s.result}" for s in result.steps]
-        header = "Done: " if result.done else "Stopped: "
-        body = "\n".join(lines) if lines else "(no steps taken)"
-        full = f"{header}{result.message}\n\n{body}"
-        print(f"[computer_use] goal={goal!r}\n{full}")  # noqa: T201 — temporary debug, remove after diagnosis
-        return full
+    def look_at_screen(question: str) -> str:
+        if vision_client is None:
+            return "ERROR: no OpenRouter API key configured."
+        try:
+            answer, path = operator.look(vision_client, operator_model, question)
+        except screen.ScreenCaptureError as e:
+            return f"ERROR: {e}"
+        return f"{answer}\n\n(screenshot saved: {path})"
 
     registry.register(
         {
@@ -93,26 +89,70 @@ def register(registry: ToolRegistry, settings: Settings) -> None:
         {
             "type": "function",
             "function": {
-                "name": "computer_use",
+                "name": "operate_mac",
                 "description": (
-                    "Drive native macOS apps or the Brave browser on Sonali's Mac toward an on-screen goal "
-                    "that needs actually looking at and clicking through the interface (e.g. \"find the "
-                    "unread message from Alice in Slack and read it\", \"in Brave, search YouTube for the "
-                    "Elliot Choy video and open it\"). Runs a bounded perceive-decide-act loop and reports "
-                    "what it did or where it stopped. Prefer open_in_browser when you already have a direct "
-                    "URL — only reach for this when on-page navigation/clicking is actually required."
+                    "THE tool for anything in a named Mac app (TextEdit, Notes, Brave, Calculator, Finder…). "
+                    "Actually DO something on Sonali's Mac by looking at the screen and clicking/typing like a "
+                    "person: any app, any website, any setting (e.g. \"reply 'on my way' to the last WhatsApp "
+                    "message from Mansfield\", \"turn on Do Not Disturb\", \"open my Downloads folder and find "
+                    "the newest PDF\", \"make a new note in Notes saying ...\"). Takes screenshots each step "
+                    "(saved to ~/.edith/screenshots). Pass the goal in full. Every piece of text to type or fill "
+                    "must be given literally: either in double quotes inside the goal or in `texts` — the step "
+                    "decider can only CHOOSE from those, never write. For forms (job/YC applications etc.), first "
+                    "draft every answer, show Sonali, get her OK, then call this with all answers in `texts` and "
+                    "a goal like 'fill the application form fields with the provided answers; don't submit'. "
+                    "Websites to open go in `urls` (or literally in the goal). "
+                    "If the result starts with NEEDS_CONFIRMATION, tell Sonali exactly what's about to happen and "
+                    "ask — only after she clearly says yes, call again with the same goal and allow_risky=true. "
+                    "If it starts with NEEDS_INPUT, ask her the question. Prefer open_in_browser when you just "
+                    "need to open a known URL."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "goal": {
-                            "type": "string",
-                            "description": "One concrete, single-instruction goal — not a compound multi-part request.",
-                        }
+                        "goal": {"type": "string", "description": "What to accomplish, in full."},
+                        "texts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Exact text values available to type/fill, e.g. approved form answers.",
+                        },
+                        "urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Exact web addresses the task may open.",
+                        },
+                        "allow_risky": {
+                            "type": "boolean",
+                            "description": (
+                                "Only true after Sonali explicitly confirmed the specific send/delete/buy/post "
+                                "step this goal needs. Default false."
+                            ),
+                        },
                     },
                     "required": ["goal"],
                 },
             },
         },
-        computer_use,
+        operate_mac,
     )
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "look_at_screen",
+                "description": (
+                    "Take a screenshot of Sonali's Mac screen and answer a question about it — \"what's this "
+                    "error?\", \"summarize this page\", \"what am I looking at?\". Read-only; doesn't click "
+                    "anything. The screenshot is saved to ~/.edith/screenshots."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {"question": {"type": "string", "description": "What to find out from the screen."}},
+                    "required": ["question"],
+                },
+            },
+        },
+        look_at_screen,
+    )
+    registry.alias("computer_use", "operate_mac")

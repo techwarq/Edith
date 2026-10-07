@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eddy</title>
+<style>
+  :root {
+    --accent-idle: #739cff;
+    --accent-listen: #ff5c6b;
+    --accent-think: #ffc74d;
+    --accent-done: #59e699;
+    --notch-w: 376px;
+    --notch-h: 340px;
+    --flare: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
+    background:
+      radial-gradient(1200px 700px at 78% 18%, #7b5cff55, transparent 60%),
+      radial-gradient(900px 600px at 20% 90%, #ff6fa955, transparent 60%),
+      linear-gradient(135deg, #1b1f3b 0%, #2c2a5e 45%, #45306b 100%);
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .menubar {
+    position: fixed; inset: 0 0 auto 0; height: 30px; display: flex; align-items: center; gap: 22px;
+    padding: 0 18px; font-size: 13.5px; background: rgba(20, 18, 40, .45); backdrop-filter: blur(20px);
+  }
+  .menubar b { font-weight: 700; }
+  .menubar .right { margin-left: auto; display: flex; gap: 18px; opacity: .9; }
+
+  .win {
+    position: fixed; top: 52px; width: 500px; height: 760px; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08);
+    opacity: 0; transform: scale(.94) translateY(14px); transition: opacity .45s ease, transform .55s cubic-bezier(.2,.9,.25,1.15);
+  }
+  .win.show { opacity: 1; transform: none; }
+  .lights { display: flex; gap: 8px; } .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  #safari { left: 404px; background: #1c1c1e; }
+  #textedit { left: 920px; background: #fbfbfa; color: #1d1d1f; }
+
+  .sbar { height: 52px; background: #2a2a2c; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid #3a3a3c; }
+  .url { flex: 1; height: 30px; border-radius: 8px; background: #3a3a3c; display: flex; align-items: center; gap: 7px; padding: 0 10px;
+    font-size: 13px; color: #ebebf5; white-space: nowrap; overflow: hidden; }
+  .url .lock { opacity: .55; font-size: 11px; }
+  .url .ph { color: #8e8e93; }
+  .page { position: absolute; inset: 52px 0 0 0; overflow: hidden; }
+  .scroller { transition: transform 1.4s cubic-bezier(.45,.05,.25,1); }
+  .start { display: grid; place-items: center; height: 100%; color: #8e8e93; font-size: 13px; }
+  .start b { display: block; color: #ebebf5; font-size: 22px; margin-bottom: 6px; text-align: center; }
+  .results { padding: 22px 24px; display: none; }
+  .results .q { font-size: 13px; color: #8e8e93; margin-bottom: 18px; }
+  .hit { margin-bottom: 18px; border-radius: 8px; padding: 6px 8px; margin-left: -8px; transition: background .3s; }
+  .hit.focus { background: rgba(10,132,255,.18); }
+  .hit .src { font-size: 11.5px; color: #8e8e93; } .hit .ttl { font-size: 15.5px; color: #64a8ff; margin: 2px 0 4px; }
+  .hit .snip { font-size: 12.5px; color: #c7c7cc; line-height: 1.45; }
+  .article { padding: 26px 30px; display: none; color: #e5e5ea; }
+  .article .kicker { font-size: 11.5px; color: #64a8ff; letter-spacing: .04em; text-transform: uppercase; }
+  .article h1 { font-size: 25px; line-height: 1.2; margin: 6px 0 14px; }
+  .article h2 { font-size: 16px; margin: 20px 0 6px; }
+  .article p { font-size: 13.5px; line-height: 1.6; color: #c7c7cc; }
+  .article .fig { height: 170px; border-radius: 10px; margin: 16px 0; overflow: hidden; position: relative; background:
+      radial-gradient(34px 64px at 50% 118px, #fff3c4 0, #ffb34d 30%, #ff6a2a 60%, transparent 100%), #232326; }
+  .article .fig::before { content: ""; position: absolute; left: 50%; top: 14px; width: 56px; height: 70px; transform: translateX(-50%);
+    background: linear-gradient(90deg, #8e8e93, #d1d1d6, #8e8e93); clip-path: polygon(30% 0, 70% 0, 70% 45%, 100% 100%, 0 100%, 30% 45%); }
+  .reading { position: absolute; left: 0; right: 0; height: 64px; background: rgba(10,132,255,.13); border-left: 3px solid #0a84ff;
+    opacity: 0; transition: top .7s ease, opacity .3s; pointer-events: none; }
+
+  .tbar { height: 52px; background: #ececeb; border-bottom: 1px solid #d8d8d6; display: flex; align-items: center; padding: 0 14px; gap: 16px; }
+  .tbar .name { font-size: 13px; font-weight: 600; color: #3a3a3c; margin: 0 auto; transform: translateX(-30px); }
+  .doc { padding: 30px 34px; font: 14px/1.6 "Helvetica Neue", -apple-system, sans-serif; white-space: pre-wrap; color: #1d1d1f; }
+  .doc h3 { font-size: 20px; margin-bottom: 10px; } .doc .src { color: #6e6e73; font-size: 12px; }
+  .caret { display: inline-block; width: 2px; height: 17px; background: #0a84ff; vertical-align: -3px; margin-left: 1px; animation: blink 1s steps(1) infinite; }
+  .idle .caret { display: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-6px); } }
+
+  .notch {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+    width: 12px; height: 120px; transition: width .5s cubic-bezier(.2,.9,.25,1.12), height .5s cubic-bezier(.2,.9,.25,1.12);
+    filter: drop-shadow(10px 0 26px rgba(0,0,0,.45));
+  }
+  .notch.open { width: var(--notch-w); height: var(--notch-h); }
+  .notch .shape {
+    position: absolute; inset: var(--flare) 0; background: #000; border-radius: 0 7px 7px 0;
+    transition: border-radius .5s; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .notch.open .shape { border-radius: 0 26px 26px 0; }
+
+  .notch .flare { position: absolute; left: 0; width: var(--flare); height: var(--flare); overflow: hidden; }
+  .notch .flare.top { top: 0; } .notch .flare.bottom { bottom: 0; }
+  .notch .flare::before { content: ""; position: absolute; width: 200%; height: 200%; border-radius: 50%;
+    box-shadow: 0 0 0 40px #000; }
+  .notch .flare.top::before { left: 0; top: -100%; }
+  .notch .flare.bottom::before { left: 0; top: 0; }
+
+  .tab { position: absolute; inset: var(--flare) 0; display: grid; place-items: center; cursor: pointer; transition: opacity .2s; }
+  .tab i { width: 3px; height: 16px; border-radius: 3px; background: var(--accent-idle); box-shadow: 0 0 8px var(--accent-idle); opacity: .75; }
+  .notch.open .tab { opacity: 0; pointer-events: none; }
+
+  .panel { position: absolute; inset: var(--flare) 0; padding: 18px 20px 16px 22px; display: flex; flex-direction: column; gap: 12px;
+    opacity: 0; transform: scale(.94); transform-origin: left center; transition: opacity .25s ease .12s, transform .4s ease .08s; pointer-events: none; }
+  .notch.open .panel { opacity: 1; transform: none; pointer-events: auto; }
+
+  .head { display: flex; align-items: center; gap: 10px; }
+  .orb { width: 26px; height: 26px; border-radius: 50%; position: relative; flex: none;
+    background: conic-gradient(from 0deg, var(--accent), color-mix(in srgb, var(--accent) 40%, transparent), #ffffffe0, var(--accent));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent); transform: scale(.85); transition: transform .12s; }
+  .busy .orb { animation: spin 1.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg) scale(.9); } }
+  .who b { display: block; font-size: 13.5px; font-weight: 650; }
+  .who span { font-size: 11.5px; color: rgba(255,255,255,.48); }
+  .head .sp { flex: 1; }
+  .ib { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); font-size: 12px; border: 0; }
+
+  .wave { height: 30px; display: none; align-items: center; gap: 3px; }
+  .listening .wave { display: flex; }
+  .wave i { width: 3px; border-radius: 3px; background: var(--accent); height: 3px; transition: height .09s ease-out; }
+
+  .convo { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+  .hello { font-size: 15.5px; font-weight: 550; color: rgba(255,255,255,.88); }
+  .keys { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: rgba(255,255,255,.42); }
+  .keys kbd { font: 500 10px ui-rounded, -apple-system; color: rgba(255,255,255,.75); background: rgba(255,255,255,.1); border-radius: 4px; padding: 2px 5px; margin-right: 5px; }
+  .heard { font-size: 13.5px; color: rgba(255,255,255,.55); line-height: 1.4; }
+  .reply { font-size: 15px; color: rgba(255,255,255,.95); line-height: 1.45; }
+  .reply code { font: 13px ui-monospace, SFMono-Regular, Menlo; background: rgba(255,255,255,.1); padding: 1px 5px; border-radius: 5px; }
+  .steps { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: rgba(255,255,255,.62); }
+  .steps div { display: flex; gap: 8px; align-items: center; animation: rowIn .25s ease; }
+  .steps div::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-done); flex: none; }
+  .steps div.now::before { background: var(--accent-think); box-shadow: 0 0 8px var(--accent-think); }
+
+  .input { height: 40px; border-radius: 20px; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1);
+    display: flex; align-items: center; padding: 0 5px 0 14px; gap: 6px; }
+  .input input { flex: 1; background: transparent; border: 0; outline: 0; color: #fff; font: 13px -apple-system, "Inter", sans-serif; }
+  .input input::placeholder { color: rgba(255,255,255,.35); }
+  .mic, .send { width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255,255,255,.1); cursor: pointer; }
+  .mic svg { width: 13px; height: 13px; fill: rgba(255,255,255,.75); }
+  .listening .mic { background: color-mix(in srgb, var(--accent-listen) 25%, transparent); }
+  .listening .mic svg { fill: var(--accent-listen); }
+  .send { background: #fff; display: none; }
+  .send svg { width: 12px; height: 12px; fill: #000; }
+  .input.has-text .send { display: grid; }
+
+  .notch { --accent: var(--accent-idle); }
+  .notch.listening { --accent: var(--accent-listen); }
+  .notch.busy { --accent: var(--accent-think); }
+  .notch.done { --accent: var(--accent-done); }
+
+  .caption { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); font-size: 15px; color: rgba(255,255,255,.78);
+    background: rgba(0,0,0,.35); padding: 9px 16px; border-radius: 999px; backdrop-filter: blur(10px); opacity: 0; transition: opacity .4s; }
+  .caption.on { opacity: 1; }
+</style>
+</head>
+<body>
+  <div class="menubar"><svg width="14" height="16" viewBox="0 0 814 1000" fill="#fff" aria-hidden="true"><path d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 62-88 124-156 124s-86-40-164-40c-77 0-104 41-167 41s-106-57-156-127C44 791 0 663 0 541 0 345 127 241 252 241c66 0 122 44 164 44 40 0 102-46 178-46 29 0 132 3 194 102zM554 160c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 34-146 76-28 32-55 83-55 135 0 8 1 16 2 18 3 1 9 1 14 1 45 0 101-30 134-71z"/></svg><b id="appName">Finder</b><span>File</span><span>Edit</span><span>Format</span><span>View</span><span>Window</span><span>Help</span>
+    <div class="right"><span>⌥</span><span>Wed 7 Oct</span><span id="clock">3:42 PM</span></div></div>
+
+  <section class="win" id="safari" data-clep="eddy">
+    <div class="sbar"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="url" id="url"><span class="lock">🔒</span><span class="ph" id="urlText">Search or enter website name</span></div></div>
+    <div class="page">
+      <div class="scroller" id="scroller">
+        <div class="start" id="start"><div><b>Favourites</b>Start Page</div></div>
+        <div class="results" id="results">
+          <div class="q">Results for “how do rocket engines work”</div>
+          <div class="hit" id="hit1"><div class="src">grc.nasa.gov › rocket</div><div class="ttl">Rocket Propulsion — NASA Glenn Research Center</div>
+            <div class="snip">Thrust is produced according to Newton's third law of motion. A rocket engine burns propellant and expels the exhaust out of a nozzle at high speed…</div></div>
+          <div class="hit"><div class="src">en.wikipedia.org › wiki › Rocket_engine</div><div class="ttl">Rocket engine — Wikipedia</div>
+            <div class="snip">A rocket engine uses stored rocket propellants as the reaction mass for forming a high-speed propulsive jet of fluid, usually high-temperature gas…</div></div>
+          <div class="hit"><div class="src">spacex.com › vehicles</div><div class="ttl">Merlin & Raptor engines — SpaceX</div>
+            <div class="snip">Raptor is a reusable methane-oxygen staged-combustion engine that powers Starship…</div></div>
+          <div class="hit"><div class="src">esa.int › Education</div><div class="ttl">How do rockets work? — European Space Agency</div>
+            <div class="snip">Rockets carry their own oxidiser, which is why they can fly where there is no air…</div></div>
+        </div>
+        <article class="article" id="article">
+          <div class="kicker">NASA Glenn Research Center</div>
+          <h1>Rocket Propulsion</h1>
+          <p>Thrust is the force which moves a rocket through the air and through space. It is generated by the propulsion system through the application of Newton's third law of motion: for every action there is an equal and opposite re-action.</p>
+          <div class="fig"></div>
+          <h2>Propellant: fuel and oxidizer</h2>
+          <p>Unlike a jet engine, a rocket carries its own oxidizer — liquid oxygen, for example — so it can burn its fuel where there is no air, including the vacuum of space.</p>
+          <h2>Combustion chamber</h2>
+          <p>Fuel and oxidizer are mixed and burned in the combustion chamber, producing hot exhaust gas at very high pressure.</p>
+          <h2>The nozzle</h2>
+          <p>The converging–diverging nozzle accelerates the exhaust to supersonic speed. The faster the exhaust leaves, the more thrust the engine makes for the propellant it burns.</p>
+          <h2>Liquid and solid rockets</h2>
+          <p>Liquid engines can be throttled and restarted; solid rocket motors are simpler but burn until the propellant is gone.</p>
+          <h2>Specific impulse</h2>
+          <p>Engineers compare engines by specific impulse — how much thrust an engine gets from each kilogram of propellant per second. Higher exhaust velocity means higher specific impulse and a more efficient engine.</p>
+          <h2>Staging</h2>
+          <p>Because an engine has to lift its own empty tanks, large rockets drop spent stages and light new engines on the way up, so less dead weight is carried to orbit.</p>
+        </article>
+      </div>
+      <div class="reading" id="reading"></div>
+    </div>
+  </section>
+
+  <section class="win" id="textedit" data-clep="eddy">
+    <div class="tbar"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="name">How rocket engines work.rtf</div></div>
+    <div class="doc idle" id="doc"><span id="docText"></span><span class="caret"></span></div>
+  </section>
+
+  <div class="notch" id="notch" data-clep="eddy" data-clep-state="collapsed">
+    <div class="flare top"></div><div class="flare bottom"></div>
+    <div class="shape"></div>
+    <div class="tab" data-clep-action="open" id="tab" title="Eddy — hold ⌃ to talk"><i></i></div>
+    <div class="panel">
+      <div class="head">
+        <div class="orb"></div>
+        <div class="who"><b>Eddy</b><span id="status">Ready</span></div>
+        <div class="sp"></div>
+        <button class="ib" tabindex="-1">◈</button><button class="ib" tabindex="-1">‹</button>
+      </div>
+      <div class="wave" id="wave"></div>
+      <div class="convo" id="convo">
+        <div id="hello"><div class="hello">What can I do for you?</div>
+          <div class="keys"><span><kbd>⌃</kbd>hold to talk</span><span><kbd>⌃⌘</kbd>type</span><span><kbd>esc</kbd>stop</span></div></div>
+      </div>
+      <div class="input" id="inputBox">
+        <input id="ask" data-clep-action="input" placeholder="Ask Eddy anything…" autocomplete="off">
+        <button class="mic" data-clep-action="talk" id="mic" title="Talk"><svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12z"/></svg></button>
+        <button class="send" data-clep-action="primary" id="send" title="Send"><svg viewBox="0 0 24 24"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8l-4.6 4.6L5 11z"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption" id="caption"></div>
+
+<script>const $ = id => document.getElementById(id);
+const notch = $('notch'), convo = $('convo'), wave = $('wave');
+const safari = $('safari'), textedit = $('textedit');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const COMMAND = 'Research how rocket engines work in Safari and write me a summary in TextEdit';
+const SUMMARY = [
+  ['h', 'How rocket engines work'],
+  ['p', '1. Newton\'s third law — the engine throws hot gas out of the back at enormous speed, and the gas pushes the rocket forward with an equal and opposite force.'],
+  ['p', '2. Propellant = fuel + oxidizer. Rockets carry their own oxygen, so they work in the vacuum of space where jet engines can\'t.'],
+  ['p', '3. Combustion chamber — fuel and oxidizer burn at around 3,000 °C, creating very high-pressure gas.'],
+  ['p', '4. Nozzle — the bell-shaped converging–diverging nozzle speeds the exhaust up to supersonic velocity; faster exhaust means more thrust.'],
+  ['p', '5. Liquid engines (e.g. SpaceX Raptor) can throttle and restart; solid motors are simpler but can\'t be switched off once lit.'],
+  ['s', 'Sources: NASA Glenn Research Center · Wikipedia · ESA'],
+];
+
+function setState(s) {
+  notch.setAttribute('data-clep-state', s);
+  safari.setAttribute('data-clep-state', s);
+  textedit.setAttribute('data-clep-state', s);
+  notch.classList.toggle('listening', s === 'listening');
+  notch.classList.toggle('busy', s === 'thinking');
+  notch.classList.toggle('done', s === 'done');
+}
+function status(t) { $('status').textContent = t; }
+function caption(t) { const c = $('caption'); c.textContent = t || ''; c.classList.toggle('on', !!t); }
+
+for (let i = 0; i < 28; i++) wave.appendChild(document.createElement('i'));
+let waveTimer = null, levels = Array(28).fill(0);
+function startWave() {
+  let t = 0;
+  waveTimer = setInterval(() => {
+    t += 1;
+    const syllable = Math.abs(Math.sin(t / 2.3)) * (0.55 + 0.45 * Math.abs(Math.sin(t / 7)));
+    levels.shift(); levels.push(Math.min(1, syllable * (0.7 + Math.random() * 0.5)));
+    [...wave.children].forEach((b, i) => { b.style.height = Math.max(3, levels[i] * 30) + 'px'; b.style.opacity = .35 + levels[i] * .65; });
+  }, 70);
+}
+function stopWave() { clearInterval(waveTimer); [...wave.children].forEach(b => b.style.height = '3px'); }
+
+function open() {
+  if (notch.classList.contains('open')) return;
+  notch.classList.add('open');
+  setState('open');
+  setTimeout(() => $('ask').focus(), 400);
+}
+$('tab').addEventListener('click', open);
+
+$('ask').addEventListener('input', e => $('inputBox').classList.toggle('has-text', !!e.target.value.trim()));
+$('ask').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+$('send').addEventListener('click', () => send());
+
+async function talk() {
+  open();
+  $('hello')?.remove();
+  setState('listening'); status('Listening…'); caption('Hold ⌃ and just say what you need');
+  startWave();
+  const heard = document.createElement('div'); heard.className = 'heard'; convo.appendChild(heard);
+  const words = COMMAND.split(' ');
+  for (let i = 0; i < words.length; i++) { heard.textContent = words.slice(0, i + 1).join(' '); await sleep(210); }
+  await sleep(450);
+  stopWave();
+  run(heard);
+}
+$('mic').addEventListener('click', talk);
+
+function send() {
+  const text = $('ask').value.trim(); if (!text) return;
+  $('ask').value = ''; $('inputBox').classList.remove('has-text');
+  $('hello')?.remove();
+  const heard = document.createElement('div'); heard.className = 'heard'; heard.textContent = text; convo.appendChild(heard);
+  run(heard);
+}
+
+async function typeInto(el, text, perChar) {
+  for (let i = 1; i <= text.length; i++) { el.textContent = text.slice(0, i); await sleep(perChar); }
+}
+
+async function run(heard) {
+  setState('thinking'); caption('Eddy researches in Safari…');
+  const steps = document.createElement('div'); steps.className = 'steps'; convo.appendChild(steps);
+  const step = async (label, ms, fn) => {
+    status(label);
+    [...steps.children].forEach(c => c.classList.remove('now'));
+    const row = document.createElement('div'); row.className = 'now'; row.textContent = label; steps.appendChild(row);
+    while (steps.children.length > 5) steps.firstElementChild.remove();
+    if (fn) await fn();
+    await sleep(ms);
+    row.classList.remove('now');
+  };
+  const url = $('urlText'), scroller = $('scroller'), reading = $('reading');
+
+  await step('Looking at the screen…', 600);
+  await step('Opening Safari…', 550, async () => { safari.classList.add('show'); $('appName').textContent = 'Safari'; });
+  await step('Searching “how do rocket engines work”…', 350, async () => {
+    url.classList.remove('ph'); await typeInto(url, 'how do rocket engines work', 35);
+    await sleep(250); $('start').style.display = 'none'; $('results').style.display = 'block';
+  });
+  await step('Opening NASA — Rocket Propulsion…', 450, async () => {
+    $('hit1').classList.add('focus'); await sleep(450);
+    $('results').style.display = 'none'; $('article').style.display = 'block';
+    url.textContent = 'grc.nasa.gov/www/k-12/rocket/rocket.html';
+  });
+  await step('Reading the article…', 300, async () => {
+    reading.style.opacity = 1;
+    for (const [top, shift] of [[150, 0], [260, 0], [330, -230], [300, -330]]) {
+      reading.style.top = top + 'px'; scroller.style.transform = `translateY(${shift}px)`; await sleep(700);
+    }
+    reading.style.opacity = 0;
+  });
+  await step('Cross-checking Wikipedia and ESA…', 650);
+
+  caption('…and writes it up in TextEdit, side by side');
+  await step('Opening TextEdit…', 450, async () => { textedit.classList.add('show'); $('appName').textContent = 'TextEdit'; });
+  await step('Writing the summary…', 250, async () => {
+    const doc = $('doc'), out = $('docText'); doc.classList.remove('idle'); out.innerHTML = '';
+    for (const [kind, text] of SUMMARY) {
+      const el = document.createElement(kind === 'h' ? 'h3' : 'div');
+      if (kind === 's') el.className = 'src';
+      out.appendChild(el);
+      await typeInto(el, text, kind === 'h' ? 30 : 9);
+      if (kind !== 'h') out.appendChild(document.createTextNode('\n'));
+      await sleep(120);
+    }
+    doc.classList.add('idle');
+  });
+  await step('Checking the result…', 500);
+  steps.remove();
+  const reply = document.createElement('div'); reply.className = 'reply';
+  reply.innerHTML = 'Done — a 5-point summary of how rocket engines work is in <code>TextEdit</code>, with sources from NASA, Wikipedia and ESA.';
+  convo.appendChild(reply);
+  setState('done'); status('Ready'); caption('One sentence. Research done, notes written.');
+}
+</script>
+</body>
+</html>
