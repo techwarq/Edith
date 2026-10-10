@@ -71,3 +71,6 @@ packages = [
     "edith.tools.system",
     "edith.web",
 ]
+
+[tool.pytest.ini_options]
+markers = ["real_portfolio: run portfolio_sources without the autouse stub"]

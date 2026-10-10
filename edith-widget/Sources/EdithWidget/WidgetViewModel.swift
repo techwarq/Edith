@@ -23,6 +23,7 @@ final class WidgetViewModel: ObservableObject {
 
     var isHovering = false { didSet { if isHovering { cancelAutoCollapse() } else { scheduleAutoCollapse() } } }
     var isTyping = false { didSet { if isTyping { cancelAutoCollapse() } else { scheduleAutoCollapse() } } }
+    var isPinned = false { didSet { if isPinned { cancelAutoCollapse() } else { scheduleAutoCollapse() } } }
 
     static let levelHistory = 28
     private static let autoCollapseNanoseconds: UInt64 = 8_000_000_000
@@ -56,7 +57,7 @@ final class WidgetViewModel: ObservableObject {
     }
 
     func collapseIfIdle() {
-        guard !isBusy, !isHovering else { return }
+        guard !isBusy, !isHovering, !isPinned else { return }
         collapse()
     }
 
@@ -73,7 +74,7 @@ final class WidgetViewModel: ObservableObject {
 
     private func scheduleAutoCollapse() {
         cancelAutoCollapse()
-        guard isExpanded, !isHovering, !isTyping, !isBusy else { return }
+        guard isExpanded, !isHovering, !isTyping, !isPinned, !isBusy else { return }
         autoCollapseTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.autoCollapseNanoseconds)
             guard !Task.isCancelled else { return }

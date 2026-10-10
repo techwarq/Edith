@@ -16,6 +16,8 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 DEFAULT_MODEL = "qwen/qwen3.7-flash"
 DEFAULT_OPENROUTER_TEXT_MODEL = "qwen/qwen3-coder-next"
+DEFAULT_STARTUP_FINDER_MODEL = "meta/muse-spark-1.3"
+DEFAULT_STARTUP_FINDER_FALLBACK_MODEL = "qwen/qwen3.8-flash"
 DEFAULT_GEMINI_GROUNDING_MODEL = "gemini-3.5-flash"
 
 MAX_TOOL_ITERATIONS = 8
@@ -70,6 +72,10 @@ DEEP_RESEARCH_SLEEP_HOURS = float(os.environ.get("EDITH_DEEP_RESEARCH_SLEEP_HOUR
 FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
 
 HUNTER_API_KEY = os.environ.get("HUNTER_API_KEY", "").strip()
+CRUSTDATA_API_KEY = os.environ.get("CRUSTDATA_API_KEY", "").strip()
+APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "").strip()
+PROSPEO_API_KEY = os.environ.get("PROSPEO_API_KEY", "").strip()
+RESUME_PDF = os.environ.get("EDITH_RESUME_PDF", str(EDITH_HOME / "resume.pdf")).strip()
 
 DODO_PAYMENTS_API_KEY = os.environ.get("DODO_PAYMENTS_API_KEY", "").strip()
 DODO_PAYMENTS_BASE_URL = os.environ.get("DODO_PAYMENTS_BASE_URL", "https://live.dodopayments.com").strip()
@@ -142,6 +148,12 @@ class Settings:
     computer_use_writer_model: str
     computer_use_max_steps: int
     computer_use_confidence_threshold: float
+    crustdata_api_key: str = ""
+    resume_pdf: str = ""
+    apollo_api_key: str = ""
+    prospeo_api_key: str = ""
+    startup_finder_model: str = DEFAULT_STARTUP_FINDER_MODEL
+    startup_finder_fallback_model: str = DEFAULT_STARTUP_FINDER_FALLBACK_MODEL
 
 
 def load_settings() -> Settings:
@@ -188,6 +200,12 @@ def load_settings() -> Settings:
         nightly_reflection_cron=NIGHTLY_REFLECTION_CRON,
         firebase_service_account_json=FIREBASE_SERVICE_ACCOUNT_JSON,
         hunter_api_key=HUNTER_API_KEY,
+        crustdata_api_key=CRUSTDATA_API_KEY,
+        resume_pdf=RESUME_PDF,
+        apollo_api_key=APOLLO_API_KEY,
+        prospeo_api_key=PROSPEO_API_KEY,
+        startup_finder_model=os.environ.get("EDITH_STARTUP_FINDER_MODEL", DEFAULT_STARTUP_FINDER_MODEL).strip(),
+        startup_finder_fallback_model=os.environ.get("EDITH_STARTUP_FINDER_FALLBACK_MODEL", DEFAULT_STARTUP_FINDER_FALLBACK_MODEL).strip(),
         dodo_payments_api_key=DODO_PAYMENTS_API_KEY,
         dodo_payments_base_url=DODO_PAYMENTS_BASE_URL,
         vercel_analytics_token=VERCEL_ANALYTICS_TOKEN,

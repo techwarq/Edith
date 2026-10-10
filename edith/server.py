@@ -18,6 +18,7 @@ from edith.config import WHATSAPP_QR_PATH, load_settings
 from edith.memory import db, store
 from edith.goals import api as goals_api
 from edith.job_applications import api as job_applications_api
+from edith.startup_finder import api as startup_finder_api
 from edith.mcp import api as mcp_api
 from edith.memory import health as health_metrics
 from edith.monitor import api as monitor_api
@@ -55,6 +56,7 @@ app.include_router(mcp_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(deep_research_api.build_router(ctx.conn, settings, API_TOKEN))
 app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
 app.include_router(job_applications_api.build_router(ctx.conn, API_TOKEN))
+app.include_router(startup_finder_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
 app.include_router(linkedin_api.build_router(ctx.conn, ctx.genai_client, API_TOKEN))
 
 

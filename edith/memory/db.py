@@ -331,6 +331,46 @@ CREATE TABLE IF NOT EXISTS outreach_prospects (
 CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach_prospects(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_outreach_domain ON outreach_prospects(company_domain);
 
+CREATE TABLE IF NOT EXISTS startup_leads (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    dedup_key         TEXT NOT NULL UNIQUE,
+    kind              TEXT NOT NULL CHECK(kind IN ('role','founder')),
+    company           TEXT NOT NULL,
+    domain            TEXT,
+    fund              TEXT,
+    source            TEXT,
+    role_title        TEXT,
+    job_url           TEXT,
+    company_url       TEXT,
+    locations         TEXT,
+    region            TEXT,
+    eligibility       TEXT,
+    salary            TEXT,
+    team_size         INTEGER,
+    stage             TEXT,
+    description       TEXT,
+    founders          TEXT,
+    contact_email     TEXT,
+    score             REAL NOT NULL DEFAULT 0,
+    reasons           TEXT,
+    pitch             TEXT,
+    company_info      TEXT,
+    draft_to          TEXT,
+    draft_subject     TEXT,
+    draft_body        TEXT,
+    sent_at           TEXT,
+    sent_to           TEXT,
+    status            TEXT NOT NULL DEFAULT 'new' CHECK(status IN (
+                          'new','delivered','contacted','applied','interview','rejected','skipped'
+                      )),
+    posted_at         TEXT,
+    found_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    delivered_at      TEXT,
+    updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_startup_leads_status ON startup_leads(status, score DESC);
+CREATE INDEX IF NOT EXISTS idx_startup_leads_domain ON startup_leads(domain);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content,
     content='messages',
@@ -373,6 +413,12 @@ def _ensure_linkedin_schema(conn: sqlite3.Connection) -> None:
         pass
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # check_same_thread=False: server.py dispatches blocking DB calls via asyncio.to_thread(),
@@ -389,6 +435,8 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
     _check_fts5_support(conn)
     conn.executescript(SCHEMA)
+    for col in ("company_info", "draft_to", "draft_subject", "draft_body", "sent_at", "sent_to"):
+        _ensure_column(conn, "startup_leads", col, "TEXT")
     _ensure_linkedin_schema(conn)
     _check_integrity(conn)
 

@@ -5,8 +5,11 @@ pending_actions — see edith/memory/store.py's queue_pending_action).
 import base64
 import logging
 import sqlite3
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Optional
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -105,6 +108,31 @@ def execute_send_email(creds: Credentials | None, args: dict) -> str:
         return f"Email sent to {args['to']}."
     except HttpError as e:
         logger.exception("send_email execution failed")
+        return f"ERROR: sending email failed: {e}"
+
+
+def send_rich_email(creds: Credentials | None, to: str, subject: str, text: str, html: str, attachment: Optional[Path] = None, attachment_name: Optional[str] = None) -> str:
+    if not creds:
+        return NOT_CONNECTED
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(text, "plain", "utf-8"))
+    alt.attach(MIMEText(html, "html", "utf-8"))
+    if attachment:
+        message = MIMEMultipart("mixed")
+        message.attach(alt)
+        part = MIMEApplication(attachment.read_bytes(), _subtype="pdf")
+        part.add_header("Content-Disposition", "attachment", filename=attachment_name or attachment.name)
+        message.attach(part)
+    else:
+        message = alt
+    message["to"] = to
+    message["subject"] = subject
+    try:
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+        _service(creds).users().messages().send(userId="me", body={"raw": raw}).execute()
+        return f"Email sent to {to}."
+    except HttpError as e:
+        logger.exception("send_rich_email failed")
         return f"ERROR: sending email failed: {e}"
 
 

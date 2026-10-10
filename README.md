@@ -16,6 +16,84 @@ Most assistants start every conversation from zero. Edith is built for one perso
 haul: it keeps durable memory of facts and past conversations, runs jobs on a schedule, and acts
 across your apps. Anything that sends, posts, or submits waits for your approval.
 
+## Get started in 6 steps
+
+> Needs macOS 26+, Python 3.11+, and Xcode (Swift 6.2) for the notch. The backend alone runs anywhere.
+
+**1. Install the backend**
+
+```bash
+git clone https://github.com/techwarq/Edith.git && cd Edith
+python3.11 -m venv .venv          # keep it at .venv in the repo root, the notch looks for it there
+.venv/bin/pip install -e .
+```
+
+**2. Add your keys**
+
+```bash
+cp .env.example .env
+```
+
+Fill in these three in `.env`. Everything else is optional.
+
+```bash
+OPENROUTER_API_KEY=...   # chat model
+GEMINI_API_KEY=...       # search, research, embeddings
+EDITH_API_TOKEN=...      # any random string, e.g. python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**3. Start the backend** (skip this if you only use the notch, it starts the backend for you)
+
+```bash
+.venv/bin/uvicorn edith.server:app --port 8787
+```
+
+Open <http://localhost:8787> and paste your `EDITH_API_TOKEN` to chat in the browser.
+
+**4. Point the notch at your backend**
+
+Create `~/.edith/desktop_config.json`. Without it, the notch connects to the author's hosted server.
+
+```json
+{ "serverUrl": "http://127.0.0.1:8787", "token": "<your EDITH_API_TOKEN>" }
+```
+
+**5. Build and open the notch**
+
+```bash
+cd edith-widget && ./build-app.sh && open EdithWidget.app
+```
+
+A black notch appears on the left edge of your screen. Grant the permissions it lists
+(Accessibility, Screen Recording, Microphone, Speech Recognition). If the backend isn't running, the
+notch starts it and writes its logs to `~/.edith/server.log`.
+
+**6. Talk to Eddy**
+
+| Do this | To |
+|---|---|
+| Hold <kbd>⌃</kbd>, speak, let go | Ask by voice |
+| <kbd>⌃</kbd><kbd>⌘</kbd> | Type instead |
+| <kbd>Esc</kbd> | Stop whatever she's doing |
+
+Try: *"Research how rocket engines work and write me a summary in TextEdit"*, *"What do you
+remember about me?"*, or *"Remember that I prefer short answers"*.
+
+Things that leave your machine (emails, WhatsApp messages, applications, posts) wait for you to
+reply `/approve <id>`.
+
+<details>
+<summary><b>Optional setup</b></summary>
+
+- **Browser control:** Eddy reads and fills web pages in Brave. Turn on Brave → View → Developer →
+  Allow JavaScript from Apple Events.
+- **Google:** type `/google login` in chat (needs `~/.edith/google_client_secret.json`).
+- **WhatsApp:** type `/whatsapp login` and scan the QR code.
+- **Semantic memory:** set `QDRANT_URL` and `QDRANT_API_KEY`.
+- **Scheduled jobs:** set the `TEMPORAL_*` keys, then run `.venv/bin/python -m edith.temporal.worker`.
+- **Terminal only:** `.venv/bin/python main.py` chats in the terminal, no server or notch needed.
+</details>
+
 ## What it does
 
 | | |
@@ -37,32 +115,6 @@ across your apps. Anything that sends, posts, or submits waits for your approval
 | **Android** (`edith-android/`) | Capacitor | Mobile chat and push notifications. |
 | **Desktop widget** (`edith-desktop/`) | Electron | Always-on-top voice widget. |
 | **Dashboard** (`edith-dashboard/`) | Next.js | Traces, spend, evals, goals. |
-
-## Quick start
-
-```bash
-git clone https://github.com/techwarq/Edith.git && cd Edith
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e .
-cp .env.example .env        # add the keys for the integrations you want
-
-python main.py                          # terminal chat
-uvicorn edith.server:app --reload       # API + web app at http://localhost:8000
-```
-
-Only an LLM key is required. Every integration is optional and reports "not configured" instead
-of crashing at startup.
-
-<details>
-<summary><b>Build the Eddy notch (macOS)</b></summary>
-
-```bash
-cd edith-widget && ./build-app.sh
-```
-
-Grant Accessibility, Screen Recording, and Microphone when the notch asks. Shortcuts: hold
-<kbd>⌃</kbd> to talk, <kbd>⌃</kbd><kbd>⌘</kbd> to type, <kbd>Esc</kbd> to stop.
-</details>
 
 ## How it works
 

@@ -6,10 +6,14 @@ struct ContentView: View {
     @State private var typed: String = ""
     @State private var hovering = false
     @State private var showingSetup = false
+    @State private var showingLeads = false
+    @StateObject private var leads = LeadsModel()
     @StateObject private var permissions = PermissionsManager()
     @FocusState private var inputFocused: Bool
 
-    private let expanded = WidgetPanel.expandedSize
+    @ObservedObject private var layout = PanelLayout.shared
+    @State private var dragStart: (mouse: NSPoint, size: CGSize)?
+    private var expanded: CGSize { layout.size }
     private let collapsed = WidgetPanel.collapsedSize
 
     private var isOpen: Bool { viewModel.isExpanded }
@@ -34,6 +38,7 @@ struct ContentView: View {
         .onChange(of: showingSetup) { _, showing in
             if showing { permissions.startPolling() } else { permissions.stopPolling() }
         }
+        .onChange(of: showingLeads) { _, showing in viewModel.isPinned = showing }
     }
 
     private var notch: some View {
@@ -47,6 +52,9 @@ struct ContentView: View {
                 expandedContent
                     .padding(.vertical, flare)
                     .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
+                resizeHandles
+                    .padding(.vertical, flare)
+                    .transition(.opacity)
             } else {
                 collapsedTab
                     .transition(.opacity)
@@ -60,6 +68,50 @@ struct ContentView: View {
             hovering = inside
             viewModel.isHovering = inside
         }
+    }
+
+    private var resizeHandles: some View {
+        GeometryReader { geo in
+            ZStack {
+                Capsule()
+                    .fill(Color.white.opacity(dragStart == nil ? 0.18 : 0.45))
+                    .frame(width: 4, height: 44)
+                    .frame(width: 14, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    .position(x: geo.size.width - 6, y: geo.size.height / 2)
+                    .gesture(resizeDrag(width: true, height: false))
+                    .onHover { inside in (inside ? NSCursor.resizeLeftRight : NSCursor.arrow).set() }
+                    .help("Drag to resize · double-click for full height")
+                    .onTapGesture(count: 2) { layout.toggleFullHeight() }
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(dragStart == nil ? 0.25 : 0.6))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+                    .position(x: geo.size.width - 14, y: geo.size.height - 14)
+                    .gesture(resizeDrag(width: true, height: true))
+                    .onHover { inside in (inside ? NSCursor.crosshair : NSCursor.arrow).set() }
+                    .help("Drag to resize")
+            }
+        }
+    }
+
+    private func resizeDrag(width: Bool, height: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { _ in
+                let mouse = NSEvent.mouseLocation
+                if dragStart == nil { dragStart = (mouse, layout.size) }
+                guard let start = dragStart else { return }
+                viewModel.isPinned = true
+                var next = start.size
+                if width { next.width = start.size.width + (mouse.x - start.mouse.x) }
+                if height { next.height = start.size.height + 2 * (start.mouse.y - mouse.y) }
+                layout.resize(to: next)
+            }
+            .onEnded { _ in
+                dragStart = nil
+                viewModel.isPinned = showingLeads
+            }
     }
 
     private var collapsedTab: some View {
@@ -89,6 +141,9 @@ struct ContentView: View {
             if showingSetup {
                 setupList
                     .transition(.opacity)
+            } else if showingLeads {
+                LeadsView(model: leads, accent: accent)
+                    .transition(.opacity)
             } else {
                 if !permissions.allGranted { setupBanner }
                 conversation
@@ -114,10 +169,21 @@ struct ContentView: View {
                     .contentTransition(.opacity)
             }
             Spacer()
+            iconButton(showingLeads ? "bubble.left.fill" : "briefcase.fill",
+                       help: showingLeads ? "Back to chat" : "Find startups",
+                       tint: leads.isSearching ? accent : nil) {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showingSetup = false
+                    showingLeads.toggle()
+                }
+            }
             iconButton(showingSetup ? "bubble.left.fill" : "lock.shield",
                        help: showingSetup ? "Back to chat" : "Permissions",
                        tint: permissions.allGranted ? nil : Color.orange) {
-                withAnimation(.easeOut(duration: 0.2)) { showingSetup.toggle() }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showingLeads = false
+                    showingSetup.toggle()
+                }
             }
             iconButton("chevron.left", help: "Tuck away (esc)") { viewModel.collapse() }
         }

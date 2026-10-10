@@ -21,6 +21,7 @@ from edith.tools.growth import hunter as hunter_tool
 from edith.tools.growth import job_applications as job_applications_tool
 from edith.tools.growth import outreach as outreach_tool
 from edith.tools.growth import social as social_tool
+from edith.tools.growth import startup_finder as startup_finder_tool
 from edith.tools.ops import github as github_tool
 from edith.tools.ops import monid as monid_tool
 from edith.tools.ops import monitor as monitor_tool
@@ -107,6 +108,7 @@ def build_registry(
     hunter_tool.register(registry, settings)
     job_applications_tool.register(registry, conn, genai_client, model)
     outreach_tool.register(registry, conn, genai_client, model)
+    startup_finder_tool.register(registry, conn, settings, genai_client, model)
     projects_tool.register(registry, conn)
     github_tool.register(registry, settings)
     vercel_tool.register(registry, settings)

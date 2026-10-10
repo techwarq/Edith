@@ -2,8 +2,8 @@ import SwiftUI
 import AppKit
 import Combine
 
+@MainActor
 final class WidgetPanel: NSPanel, NSWindowDelegate {
-    static let expandedSize = NSSize(width: 400, height: 340)
     static let collapsedSize = NSSize(width: 28, height: 120)
     private static let collapseAnimationDelay: TimeInterval = 0.45
 
@@ -31,6 +31,13 @@ final class WidgetPanel: NSPanel, NSWindowDelegate {
         contentView = hosting
         dock(size: Self.collapsedSize)
 
+        PanelLayout.shared.$size
+            .dropFirst()
+            .sink { [weak self] size in
+                guard let self, self.viewModel.isExpanded else { return }
+                self.dock(size: size)
+            }
+            .store(in: &cancellables)
         viewModel.$isExpanded
             .removeDuplicates()
             .dropFirst()
@@ -46,7 +53,7 @@ final class WidgetPanel: NSPanel, NSWindowDelegate {
 
     private func apply(expanded: Bool) {
         if expanded {
-            dock(size: Self.expandedSize)
+            dock(size: PanelLayout.clamp(PanelLayout.shared.size))
             orderFrontRegardless()
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.collapseAnimationDelay) { [weak self] in
@@ -61,7 +68,8 @@ final class WidgetPanel: NSPanel, NSWindowDelegate {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main
         else { return }
         let visible = screen.visibleFrame
-        let origin = NSPoint(x: visible.minX, y: visible.midY - size.height / 2)
+        let y = min(max(visible.midY - size.height / 2, visible.minY), visible.maxY - size.height)
+        let origin = NSPoint(x: visible.minX, y: y)
         setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
