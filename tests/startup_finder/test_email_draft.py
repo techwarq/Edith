@@ -17,7 +17,7 @@ LEAD = {
 
 
 def test_compose_matches_template_and_picks_founder():
-    d = email_draft.compose(LEAD, "Solving one hard problem for architects.", "nagent, ailens, bogus")
+    d = email_draft.compose({**LEAD, "visa": "sponsor"}, "Solving one hard problem for architects.", "nagent, ailens, bogus")
     assert d["to"] == "dennis@visoid.com" and d["subject"] == "engineer who builds creative ai - sonali nayak"
     assert d["body"] == (
         "hello dennis,\n\n" + email_draft.INTRO + "\n\n"
@@ -26,6 +26,12 @@ def test_compose_matches_template_and_picks_founder():
         "open to relocating if you can sponsor a visa. would love to work with you, how can we do it?\n\n"
         "best,\nsonali nayak"
     )
+
+
+def test_compose_pitches_remote_unless_company_can_sponsor():
+    for path in ("remote", "unlikely", "unknown", None):
+        body = email_draft.compose({**LEAD, "visa": path}, "x")["body"]
+        assert email_draft.REMOTE_CLOSE in body and "visa" not in body
 
 
 def test_compose_defaults_projects_when_none_picked():

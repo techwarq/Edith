@@ -189,6 +189,8 @@ struct StartupLead: Decodable, Identifiable, Hashable {
     let jobUrl: String?
     let companyUrl: String?
     let eligibility: String?
+    let visa: String?
+    let visaWhy: String?
     let salary: String?
     let score: Double
     let reasons: [String]?
@@ -257,10 +259,11 @@ extension BackendClient {
         return decoder
     }()
 
-    func findStartups(count: Int, kind: String? = nil, location: String? = nil) async throws -> StartupFindResult {
+    func findStartups(count: Int, kind: String? = nil, location: String? = nil, visa: [String]? = nil) async throws -> StartupFindResult {
         var payload: [String: Any] = ["token": apiToken, "count": count]
         if let kind { payload["kind"] = kind }
         if let location, !location.isEmpty { payload["location"] = location }
+        if let visa, !visa.isEmpty { payload["visa"] = visa }
         let data = try await sendJSON(path: "api/startup-finder/run", method: "POST", payload: payload, timeout: 300)
         return try Self.decoder.decode(StartupFindResult.self, from: data)
     }

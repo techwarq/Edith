@@ -435,7 +435,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
     _check_fts5_support(conn)
     conn.executescript(SCHEMA)
-    for col in ("company_info", "draft_to", "draft_subject", "draft_body", "sent_at", "sent_to"):
+    for col in ("company_info", "draft_to", "draft_subject", "draft_body", "sent_at", "sent_to", "visa", "visa_why"):
         _ensure_column(conn, "startup_leads", col, "TEXT")
     _ensure_linkedin_schema(conn)
     _check_integrity(conn)

@@ -33,6 +33,28 @@ final class LeadsModel: ObservableObject {
 
     static let counts = [5, 10, 20, 30]
 
+    enum VisaFilter: String, CaseIterable {
+        case any = "Any", sponsor = "Can sponsor", remote = "Remote", either = "Sponsor or remote"
+
+        var paths: [String]? {
+            switch self {
+            case .any: return nil
+            case .sponsor: return ["sponsor"]
+            case .remote: return ["remote"]
+            case .either: return ["sponsor", "remote"]
+            }
+        }
+    }
+
+    @Published var visaFilter: VisaFilter = VisaFilter(rawValue: UserDefaults.standard.string(forKey: "leadsVisaFilter") ?? "") ?? .any {
+        didSet { UserDefaults.standard.set(visaFilter.rawValue, forKey: "leadsVisaFilter") }
+    }
+
+    func matchesVisa(_ lead: StartupLead) -> Bool {
+        guard let paths = visaFilter.paths else { return true }
+        return paths.contains(lead.visa ?? "")
+    }
+
     enum EarlierFilter: String, CaseIterable {
         case all = "All", toEmail = "To email", emailed = "Emailed"
     }
@@ -45,7 +67,7 @@ final class LeadsModel: ObservableObject {
 
     var latest: [StartupLead] {
         let byID = Dictionary(leads.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return latestIDs.compactMap { byID[$0] }
+        return latestIDs.compactMap { byID[$0] }.filter(matchesVisa)
     }
 
     var earlier: [StartupLead] { earlier(earlierFilter) }
@@ -53,7 +75,7 @@ final class LeadsModel: ObservableObject {
     func earlier(_ filter: EarlierFilter) -> [StartupLead] {
         let skip = Set(latestIDs)
         return leads.filter { lead in
-            guard !skip.contains(lead.id) else { return false }
+            guard !skip.contains(lead.id), matchesVisa(lead) else { return false }
             let emailed = !lead.sentRecipients.isEmpty || lead.status == "contacted"
             switch filter {
             case .all: return true
@@ -106,7 +128,7 @@ final class LeadsModel: ObservableObject {
             defer { isSearching = false }
             guard await ensureServer() else { return }
             do {
-                let result = try await client.findStartups(count: count, location: place.isEmpty ? nil : place)
+                let result = try await client.findStartups(count: count, location: place.isEmpty ? nil : place, visa: visaFilter.paths)
                 let newIDs = Set(result.leads.map(\.id))
                 leads = result.leads + leads.filter { !newIDs.contains($0.id) }
                 if !result.leads.isEmpty { latestIDs = result.leads.map(\.id) }
@@ -222,6 +244,7 @@ struct LeadsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             controls
+            visaRow
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
@@ -305,6 +328,28 @@ struct LeadsView: View {
         .background(Color.black)
     }
 
+    private var visaRow: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "airplane")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.white.opacity(0.45))
+            ForEach(LeadsModel.VisaFilter.allCases, id: \.self) { filter in
+                let on = model.visaFilter == filter
+                Button { model.visaFilter = filter } label: {
+                    Text(filter.rawValue)
+                        .font(.system(size: 10.5, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? .black : .white.opacity(0.6))
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .frame(height: 20)
+                        .background(on ? accent : Color.white.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .help("Can sponsor: on the UK/NL sponsor register, based in Germany (Blue Card), or mentions sponsorship. Remote: hires from India or worldwide.")
+    }
+
     private var controls: some View {
         HStack(spacing: 6) {
             ForEach(LeadsModel.counts, id: \.self) { n in
@@ -372,6 +417,14 @@ private struct LeadCard: View {
 
     private var done: Bool { ["contacted", "applied", "interview", "skipped", "rejected"].contains(lead.status) }
 
+    private var visaBadge: (String, Color)? {
+        switch lead.visa {
+        case "sponsor": return ("VISA", Color(red: 0.55, green: 0.8, blue: 1.0))
+        case "remote": return ("REMOTE", Color(red: 0.8, green: 0.7, blue: 1.0))
+        default: return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
@@ -385,6 +438,15 @@ private struct LeadCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
+                if let badge = visaBadge {
+                    Text(badge.0)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 5)
+                        .frame(height: 15)
+                        .background(badge.1, in: Capsule())
+                        .help(lead.visaWhy ?? "")
+                }
                 if let fund = lead.fund {
                     Text(fund)
                         .font(.system(size: 10))

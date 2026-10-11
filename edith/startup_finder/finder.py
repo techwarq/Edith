@@ -10,7 +10,7 @@ from typing import Any, Callable, Optional
 from edith.memory import job_applications_store as jobs_store
 from edith.memory import startup_leads_store as leads_store
 from edith.memory import store
-from edith.startup_finder import apollo, crustdata, email_draft, prospeo, qualify, site_emails, sources
+from edith.startup_finder import apollo, crustdata, email_draft, prospeo, qualify, site_emails, sources, visa
 
 logger = logging.getLogger("edith.startup_finder")
 
@@ -279,13 +279,14 @@ def _select(
     max_team: Optional[int] = None,
     min_team: Optional[int] = None,
     allow_unknown_team: bool = False,
+    visa_paths: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     skip_domains = leads_store.contacted_domains(conn)
     skip_names = {company_key(n) for n in leads_store.used_company_names(conn)}
     exclude = exclude or set()
     pool = leads_store.pick_new(
         conn, limit=count * 12 + len(exclude), kind=kind, location=location,
-        max_team=max_team, min_team=min_team, allow_unknown_team=allow_unknown_team,
+        max_team=max_team, min_team=min_team, allow_unknown_team=allow_unknown_team, visa=visa_paths,
     )
     picked: list[dict[str, Any]] = []
     per_company: dict[str, int] = {k: MAX_PER_COMPANY for k in (taken or set())}
@@ -428,6 +429,7 @@ def _screen(
     min_team: Optional[int] = None,
     require_ai: bool = True,
     crustdata_api_key: str = "",
+    visa_paths: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     accepted: list[dict[str, Any]] = []
     tried: set[int] = set()
@@ -437,7 +439,8 @@ def _screen(
         if need <= 0:
             break
         batch = _select(conn, need * 2, kind, exclude=tried, taken=taken, location=location,
-                        max_team=max_team, min_team=min_team, allow_unknown_team=bool(crustdata_api_key))
+                        max_team=max_team, min_team=min_team, allow_unknown_team=bool(crustdata_api_key),
+                        visa_paths=visa_paths)
         if not batch:
             break
         tried.update(l["id"] for l in batch)
@@ -459,6 +462,9 @@ def _screen(
         with ThreadPoolExecutor(8) as ex:
             for lead, text in zip(roles, ex.map(lambda l: sources.fetch_job_text(l.get("job_url")), roles)):
                 lead["_jd"] = text
+        batch = [l for l in batch if visa.apply(conn, l) in (visa_paths or visa.PATHS)]
+        if not batch:
+            continue
         chunks = [batch[i:i + JUDGE_BATCH] for i in range(0, len(batch), JUDGE_BATCH)]
         verdicts: dict[int, tuple[int, str, str, str, str]] = {}
         with ThreadPoolExecutor(4) as ex:
@@ -726,14 +732,19 @@ def find(
     require_ai: bool = True,
     apollo_api_key: str = "",
     prospeo_api_key: str = "",
+    visa_paths: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     count = max(1, min(int(count), 50))
     report: dict[str, Any] = {}
     if force_refresh or not _crawl_is_fresh(conn) or leads_store.count_new(conn) < count * 2:
         report = refresh(conn, on_progress, genai_client, model)
+    if visa_paths:
+        if on_progress:
+            on_progress("Checking visa sponsor registers…")
+        visa.backfill(conn)
     if location and crustdata_api_key:
         pool = len(leads_store.pick_new(conn, limit=count * 3, kind=kind, location=location, max_team=max_team,
-                                        min_team=min_team, allow_unknown_team=True))
+                                        min_team=min_team, allow_unknown_team=True, visa=visa_paths))
         if pool < count * 3:
             if on_progress:
                 on_progress(f"Searching Crustdata for AI startups in {location}…")
@@ -744,11 +755,13 @@ def find(
     if genai_client is not None:
         if on_progress:
             on_progress("Checking size, funding and fit…")
-        picked = _screen(conn, genai_client, model, profile, count, kind, location, max_team, min_team, require_ai, crustdata_api_key)
+        picked = _screen(conn, genai_client, model, profile, count, kind, location, max_team, min_team, require_ai,
+                         crustdata_api_key, visa_paths)
     else:
-        picked = _select(conn, count, kind, location=location, max_team=max_team, min_team=min_team)
+        picked = _select(conn, count, kind, location=location, max_team=max_team, min_team=min_team, visa_paths=visa_paths)
         if crustdata_api_key:
             _enrich_batch(conn, crustdata_api_key, picked)
+        picked = [l for l in picked if visa.apply(conn, l) in (visa_paths or visa.PATHS)]
     QUOTA_HIT.clear()
     if picked:
         if on_progress:
@@ -799,6 +812,7 @@ def draft_lead(
     if email_draft.pick_recipient(lead) is None:
         _find_contacts(lead, hunter_api_key, apollo_api_key, prospeo_api_key)
     leads_store.set_contacts(conn, lead_id, lead.get("founders"), lead.get("contact_email"))
+    visa.apply(conn, lead)
     profile = jobs_store.get_resume_text(conn) or FALLBACK_PROFILE
     like, projects, focus = email_draft.personalize(genai_client, model, profile, [lead]).get(lead_id, ("", "", ""))
     draft = draft_for(lead, like, projects, focus)

@@ -16,3 +16,9 @@ def no_site_scrape(request, monkeypatch):
     if "real_site_emails" in request.keywords:
         return
     monkeypatch.setattr(site_emails, "find", lambda domain, max_pages=0: [])
+
+
+@pytest.fixture(autouse=True)
+def no_register_download(monkeypatch):
+    from edith.startup_finder import visa
+    monkeypatch.setattr(visa, "_registers", {"uk": {}, "nl": {}})

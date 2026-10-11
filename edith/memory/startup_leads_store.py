@@ -93,12 +93,16 @@ def pick_new(
     max_team: Optional[int] = None,
     min_team: Optional[int] = None,
     allow_unknown_team: bool = False,
+    visa: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     sql = "SELECT * FROM startup_leads WHERE status = 'new' AND score >= ?"
     params: list[Any] = [min_score]
     if kind:
         sql += " AND kind = ?"
         params.append(kind)
+    if visa:
+        sql += f" AND (visa IS NULL OR visa IN ({', '.join('?' for _ in visa)}))"
+        params += visa
     if location:
         clauses = []
         for loc in split_locations(location):
@@ -192,6 +196,14 @@ def mark_sent(conn: sqlite3.Connection, lead_id: int, recipients: list[str], sub
     )
 
 
+def set_visa(conn: sqlite3.Connection, lead_id: int, visa: str, why: str) -> None:
+    conn.execute("UPDATE startup_leads SET visa = ?, visa_why = ? WHERE id = ?", (visa, why, lead_id))
+
+
+def unclassified_visa(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [_decode(r) for r in conn.execute("SELECT * FROM startup_leads WHERE visa IS NULL")]
+
+
 def set_region(conn: sqlite3.Connection, lead_id: int, region: str) -> None:
     conn.execute("UPDATE startup_leads SET region = ?, updated_at = ? WHERE id = ?", (region, _now(), lead_id))
 
@@ -217,10 +229,11 @@ def list_leads(
     region: Optional[str] = None,
     min_score: float = 0,
     limit: int = 50,
+    visa: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     sql = "SELECT * FROM startup_leads WHERE score >= ?"
     params: list[Any] = [min_score]
-    for col, val in (("status", status), ("kind", kind), ("region", region)):
+    for col, val in (("status", status), ("kind", kind), ("region", region), ("visa", visa)):
         if val:
             sql += f" AND {col} = ?"
             params.append(val)

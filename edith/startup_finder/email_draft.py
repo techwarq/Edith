@@ -29,6 +29,11 @@ PROJECT_HINTS = {
 DEFAULT_PROJECTS = ("edith", "ailens")
 PORTFOLIO = "portfolio: techwarq.space"
 CLOSE = "open to relocating if you can sponsor a visa. would love to work with you, how can we do it?"
+REMOTE_CLOSE = "happy to work remotely, full-time or contract. would love to work with you, how can we do it?"
+
+
+def close_for(lead: dict[str, Any]) -> str:
+    return CLOSE if lead.get("visa") == "sponsor" else REMOTE_CLOSE
 ATTACHMENT_NAME = "Sonali_Nayak_Resume.pdf"
 
 _LINK = re.compile(r"(?<![\w@/])((?:https?://)?(?:[a-z0-9-]+\.)+(?:ai|space|com|io|dev|co|app)(?:/[\w./-]*[\w/])?)", re.I)
@@ -95,7 +100,7 @@ def compose(
     body = (
         f"hello{' ' + first if first else ''},\n\n{INTRO}\n\n{hook}\n\n"
         + "\n".join(f"- {b}" for b in bullets)
-        + f"\n\n{CLOSE}\n\nbest,\nsonali nayak"
+        + f"\n\n{close_for(lead)}\n\nbest,\nsonali nayak"
     )
     return {"to": (recipient or {}).get("email"), "to_name": (recipient or {}).get("name"), "subject": subject_for(focus), "body": body}
 

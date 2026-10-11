@@ -11,7 +11,7 @@ from edith.config import Settings
 from edith.integrations.google import auth as google_auth
 from edith.integrations.google import gmail
 from edith.memory import startup_leads_store as leads_store
-from edith.startup_finder import email_draft, finder, llm
+from edith.startup_finder import email_draft, finder, llm, visa
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -49,6 +49,10 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         kind = body.get("kind") or None
         if kind not in (None, "role", "founder"):
             return JSONResponse({"error": "kind must be 'role' or 'founder'"}, status_code=400)
+        raw_visa = body.get("visa") or []
+        visa_paths = [v.strip() for v in (raw_visa if isinstance(raw_visa, list) else str(raw_visa).split(",")) if v.strip()]
+        if any(v not in visa.PATHS for v in visa_paths):
+            return JSONResponse({"error": f"visa must be any of {list(visa.PATHS)}"}, status_code=400)
         if lock.locked():
             return JSONResponse({"error": "a search is already running"}, status_code=409)
         async with lock:
@@ -68,6 +72,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
                 crustdata_api_key=settings.crustdata_api_key if body.get("enrich", True) else "",
                 apollo_api_key=getattr(settings, "apollo_api_key", "") if body.get("find_founders", True) else "",
                 prospeo_api_key=getattr(settings, "prospeo_api_key", "") if body.get("find_founders", True) else "",
+                visa_paths=visa_paths or None,
             )
         return JSONResponse(result)
 
@@ -79,10 +84,12 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         region: Optional[str] = None,
         min_score: float = 0,
         limit: int = 50,
+        visa_path: Optional[str] = None,
     ) -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        leads = await asyncio.to_thread(leads_store.list_leads, conn, status, kind, region, min_score, min(limit, 500))
+        await asyncio.to_thread(visa.backfill, conn)
+        leads = await asyncio.to_thread(leads_store.list_leads, conn, status, kind, region, min_score, min(limit, 500), visa_path)
         return JSONResponse({"leads": leads, "stats": await asyncio.to_thread(leads_store.stats, conn)})
 
     @router.get("/leads/{lead_id}", response_model=None)
