@@ -242,3 +242,19 @@ def test_multi_country_location_filter(tmp_path):
     assert got("Norway, Sweden") == ["a.no", "b.se"]
     assert got("United Kingdom") == ["d.uk"]
     assert got("Germany") == ["c.de"]
+
+
+def test_location_search_resumes_from_saved_cursor(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "t.db")
+    calls = []
+
+    def fake_search(api_key, location, min_team, max_team, limit=50, cursor=None):
+        calls.append(cursor)
+        n = int(cursor or 0)
+        return [], (str(n + 1) if n + 1 < 6 else None)
+
+    monkeypatch.setattr(finder.crustdata, "search_companies", fake_search)
+    finder.crustdata_location_leads(conn, "k", "Sweden", 10, 40, need=5)
+    finder.crustdata_location_leads(conn, "k", "Sweden", 10, 40, need=5)
+    finder.crustdata_location_leads(conn, "k", "Sweden", 10, 40, need=5)
+    assert calls == [None, "1", "2", "3", "4", "5", None, "1", "2", "3"]

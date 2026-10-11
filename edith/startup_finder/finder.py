@@ -245,13 +245,16 @@ def crustdata_location_leads(
     conn: sqlite3.Connection, api_key: str, location: str, min_team: Optional[int], max_team: Optional[int], need: int,
 ) -> dict[str, Any]:
     known = leads_store.known_keys(conn)
-    added, seen, cursor = 0, 0, None
+    cursor_key = f"{LOCATION_CURSOR_KEY}{location.lower()}|{min_team or ''}|{max_team or ''}"
+    added, seen, cursor = 0, 0, store.get_meta(conn, cursor_key) or None
     for _ in range(SEARCH_PAGES):
         try:
             rows, cursor = crustdata.search_companies(api_key, location, min_team, max_team, limit=50, cursor=cursor)
         except crustdata.CrustdataError as e:
             logger.warning("crustdata search failed for %s: %s", location, e)
+            store.set_meta(conn, cursor_key, "")
             return {"added": added, "seen": seen, "error": str(e)[:200]}
+        store.set_meta(conn, cursor_key, cursor or "")
         seen += len(rows)
         fresh = []
         for lead in rows:
