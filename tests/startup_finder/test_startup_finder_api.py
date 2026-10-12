@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -50,3 +51,18 @@ def test_list_and_patch_lead(tmp_path, monkeypatch):
     assert r.json()["status"] == "contacted"
     assert client.patch(f"/api/startup-finder/leads/{lead_id}", json={"token": TOKEN, "status": "bogus"}).status_code == 400
     assert client.patch("/api/startup-finder/leads/999", json={"token": TOKEN, "status": "skipped"}).status_code == 404
+
+
+def test_run_without_crustdata_uses_only_vc_sources(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "t.db")
+    settings = SimpleNamespace(hunter_api_key="", crustdata_api_key="key", gemini_grounding_model="m")
+    rows = [{"kind": "founder", "dedup_key": f"co:c{i}.ai", "company": f"Crust{i}", "domain": f"c{i}.ai", "region": "europe",
+             "description": "AI video", "team_size": 20, "source": "crustdata", "fund": "Crustdata"} for i in range(5)]
+    rows += [{"kind": "founder", "dedup_key": f"co:v{i}.ai", "company": f"Vc{i}", "domain": f"v{i}.ai", "region": "europe",
+              "description": "AI video", "source": "portfolio", "fund": "Northzone"} for i in range(5)]
+    monkeypatch.setattr(finder, "crawl", lambda on_progress=None: (rows, {"sources": {}, "errors": {}}))
+    monkeypatch.setattr(finder, "_enrich_batch", lambda *a, **k: pytest.fail("crustdata must not be called"))
+    app = FastAPI()
+    app.include_router(api.build_router(conn, settings, None, TOKEN))
+    r = TestClient(app).post("/api/startup-finder/run", json={"token": TOKEN, "count": 10, "crustdata": False}).json()
+    assert r["returned"] == 5 and r["by_source"] == {"Northzone": 5}

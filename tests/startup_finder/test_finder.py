@@ -138,7 +138,7 @@ def test_team_size_window(tmp_path, monkeypatch):
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=5, genai_client=FakeClient(), model="m", min_team=8, max_team=40)
-    assert [l["company"] for l in out["leads"]] == ["Clipster"]
+    assert sorted(l["company"] for l in out["leads"]) == ["Clipster", "Tiny"]
 
 
 def test_poor_fit_roles_are_skipped_and_replaced(tmp_path, monkeypatch):

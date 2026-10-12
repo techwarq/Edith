@@ -36,6 +36,8 @@ final class LeadsModel: ObservableObject {
     enum VisaFilter: String, CaseIterable {
         case any = "Any", sponsor = "Can sponsor", remote = "Remote", either = "Sponsor or remote"
 
+        var label: String { self == .either ? "Both" : rawValue }
+
         var paths: [String]? {
             switch self {
             case .any: return nil
@@ -48,6 +50,10 @@ final class LeadsModel: ObservableObject {
 
     @Published var visaFilter: VisaFilter = VisaFilter(rawValue: UserDefaults.standard.string(forKey: "leadsVisaFilter") ?? "") ?? .any {
         didSet { UserDefaults.standard.set(visaFilter.rawValue, forKey: "leadsVisaFilter") }
+    }
+
+    @Published var useCrustdata: Bool = UserDefaults.standard.object(forKey: "leadsUseCrustdata") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(useCrustdata, forKey: "leadsUseCrustdata") }
     }
 
     func matchesVisa(_ lead: StartupLead) -> Bool {
@@ -128,16 +134,19 @@ final class LeadsModel: ObservableObject {
             defer { isSearching = false }
             guard await ensureServer() else { return }
             do {
-                let result = try await client.findStartups(count: count, location: place.isEmpty ? nil : place, visa: visaFilter.paths)
+                let result = try await client.findStartups(count: count, location: place.isEmpty ? nil : place,
+                                                           visa: visaFilter.paths, crustdata: useCrustdata)
                 let newIDs = Set(result.leads.map(\.id))
                 leads = result.leads + leads.filter { !newIDs.contains($0.id) }
                 if !result.leads.isEmpty { latestIDs = result.leads.map(\.id) }
                 if let warnings = result.warnings, !warnings.isEmpty {
                     error = warnings.joined(separator: " · ") + " — some leads have no email; top up credits to find more."
                 }
+                let sources = (result.bySource ?? [:]).sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }
                 message = result.returned == 0
-                    ? "No new leads right now — try again later."
+                    ? "No new leads\(useCrustdata ? "" : " from VCs") right now — try again later."
                     : "\(result.returned) new\(place.isEmpty ? "" : " in \(place)") · \(result.remainingPool) more in the pool"
+                        + (sources.isEmpty ? "" : "\n" + sources.joined(separator: " · "))
             } catch {
                 message = ""
                 self.error = Self.describe(error)
@@ -336,7 +345,7 @@ struct LeadsView: View {
             ForEach(LeadsModel.VisaFilter.allCases, id: \.self) { filter in
                 let on = model.visaFilter == filter
                 Button { model.visaFilter = filter } label: {
-                    Text(filter.rawValue)
+                    Text(filter.label)
                         .font(.system(size: 10.5, weight: on ? .semibold : .regular))
                         .foregroundStyle(on ? .black : .white.opacity(0.6))
                         .lineLimit(1)
@@ -346,6 +355,22 @@ struct LeadsView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Spacer(minLength: 4)
+            Button { model.useCrustdata.toggle() } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: model.useCrustdata ? "checkmark.circle.fill" : "circle")
+                    Text("Crustdata")
+                }
+                .font(.system(size: 10.5, weight: model.useCrustdata ? .semibold : .regular))
+                .foregroundStyle(model.useCrustdata ? .black : .white.opacity(0.6))
+                .padding(.horizontal, 8)
+                .frame(height: 20)
+                .background(model.useCrustdata ? accent : Color.white.opacity(0.08), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(model.useCrustdata
+                  ? "On: Find also searches and enriches companies via Crustdata (uses credits). Tap to use VC sources only."
+                  : "Off: Find uses only VC portfolios and job boards — no Crustdata search, enrichment or credits.")
         }
         .help("Can sponsor: on the UK/NL sponsor register, based in Germany (Blue Card), or mentions sponsorship. Remote: hires from India or worldwide.")
     }

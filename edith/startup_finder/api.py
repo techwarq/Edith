@@ -53,6 +53,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         visa_paths = [v.strip() for v in (raw_visa if isinstance(raw_visa, list) else str(raw_visa).split(",")) if v.strip()]
         if any(v not in visa.PATHS for v in visa_paths):
             return JSONResponse({"error": f"visa must be any of {list(visa.PATHS)}"}, status_code=400)
+        use_crustdata = bool(body.get("crustdata", body.get("enrich", True)))
         if lock.locked():
             return JSONResponse({"error": "a search is already running"}, status_code=409)
         async with lock:
@@ -69,10 +70,11 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
                 max_team=_int_or_none(body.get("max_team", 40)),
                 min_team=_int_or_none(body.get("min_team", 10)),
                 require_ai=bool(body.get("require_ai", True)),
-                crustdata_api_key=settings.crustdata_api_key if body.get("enrich", True) else "",
+                crustdata_api_key=settings.crustdata_api_key if use_crustdata else "",
                 apollo_api_key=getattr(settings, "apollo_api_key", "") if body.get("find_founders", True) else "",
                 prospeo_api_key=getattr(settings, "prospeo_api_key", "") if body.get("find_founders", True) else "",
                 visa_paths=visa_paths or None,
+                exclude_sources=() if use_crustdata else ("crustdata",),
             )
         return JSONResponse(result)
 

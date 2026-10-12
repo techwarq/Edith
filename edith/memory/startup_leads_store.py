@@ -94,9 +94,13 @@ def pick_new(
     min_team: Optional[int] = None,
     allow_unknown_team: bool = False,
     visa: Optional[list[str]] = None,
+    exclude_sources: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     sql = "SELECT * FROM startup_leads WHERE status = 'new' AND score >= ?"
     params: list[Any] = [min_score]
+    if exclude_sources:
+        sql += f" AND COALESCE(source, '') NOT IN ({', '.join('?' for _ in exclude_sources)})"
+        params += list(exclude_sources)
     if kind:
         sql += " AND kind = ?"
         params.append(kind)

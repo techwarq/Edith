@@ -3,6 +3,7 @@ import logging
 import re
 import sqlite3
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -306,6 +307,7 @@ def _select(
     min_team: Optional[int] = None,
     allow_unknown_team: bool = False,
     visa_paths: Optional[list[str]] = None,
+    exclude_sources: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     skip_domains = leads_store.contacted_domains(conn)
     skip_names = {company_key(n) for n in leads_store.used_company_names(conn)}
@@ -313,6 +315,7 @@ def _select(
     pool = leads_store.pick_new(
         conn, limit=count * 12 + len(exclude), kind=kind, location=location,
         max_team=max_team, min_team=min_team, allow_unknown_team=allow_unknown_team, visa=visa_paths,
+        exclude_sources=exclude_sources,
     )
     picked: list[dict[str, Any]] = []
     per_company: dict[str, int] = {k: MAX_PER_COMPANY for k in (taken or set())}
@@ -429,12 +432,12 @@ def _enrich_batch(conn: sqlite3.Connection, api_key: str, leads: list[dict[str, 
                 leads_store.set_region(conn, lead["id"], lead["region"])
 
 
-def _team_ok(lead: dict[str, Any], min_team: Optional[int], max_team: Optional[int]) -> bool:
+def _team_ok(lead: dict[str, Any], min_team: Optional[int], max_team: Optional[int], allow_unknown: bool = False) -> bool:
     if not (min_team or max_team):
         return True
     size = (lead.get("company_info") or {}).get("headcount") or lead.get("team_size")
     if not size:
-        return False
+        return allow_unknown
     return (min_team or 0) <= size <= (max_team or 10**9)
 
 
@@ -456,6 +459,7 @@ def _screen(
     require_ai: bool = True,
     crustdata_api_key: str = "",
     visa_paths: Optional[list[str]] = None,
+    exclude_sources: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     accepted: list[dict[str, Any]] = []
     tried: set[int] = set()
@@ -465,8 +469,8 @@ def _screen(
         if need <= 0:
             break
         batch = _select(conn, need * 2, kind, exclude=tried, taken=taken, location=location,
-                        max_team=max_team, min_team=min_team, allow_unknown_team=bool(crustdata_api_key),
-                        visa_paths=visa_paths)
+                        max_team=max_team, min_team=min_team, allow_unknown_team=True,
+                        visa_paths=visa_paths, exclude_sources=exclude_sources)
         if not batch:
             break
         tried.update(l["id"] for l in batch)
@@ -477,7 +481,7 @@ def _screen(
             hq_known = bool((lead.get("company_info") or {}).get("hq"))
             if hq_known and lead.get("region") not in qualify.TARGET_REGIONS:
                 leads_store.update_status(conn, lead["id"], "skipped")
-            elif _team_ok(lead, min_team, max_team):
+            elif _team_ok(lead, min_team, max_team, allow_unknown=not crustdata_api_key):
                 sized.append(lead)
             else:
                 leads_store.update_status(conn, lead["id"], "skipped")
@@ -759,6 +763,7 @@ def find(
     apollo_api_key: str = "",
     prospeo_api_key: str = "",
     visa_paths: Optional[list[str]] = None,
+    exclude_sources: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     count = max(1, min(int(count), 50))
     report: dict[str, Any] = {}
@@ -770,7 +775,8 @@ def find(
         visa.backfill(conn)
     if location and crustdata_api_key:
         pool = len(leads_store.pick_new(conn, limit=count * 3, kind=kind, location=location, max_team=max_team,
-                                        min_team=min_team, allow_unknown_team=True, visa=visa_paths))
+                                        min_team=min_team, allow_unknown_team=True, visa=visa_paths,
+                                        exclude_sources=exclude_sources))
         if pool < count * 3:
             if on_progress:
                 on_progress(f"Searching Crustdata for AI startups in {location}…")
@@ -782,9 +788,10 @@ def find(
         if on_progress:
             on_progress("Checking size, funding and fit…")
         picked = _screen(conn, genai_client, model, profile, count, kind, location, max_team, min_team, require_ai,
-                         crustdata_api_key, visa_paths)
+                         crustdata_api_key, visa_paths, exclude_sources)
     else:
-        picked = _select(conn, count, kind, location=location, max_team=max_team, min_team=min_team, visa_paths=visa_paths)
+        picked = _select(conn, count, kind, location=location, max_team=max_team, min_team=min_team, visa_paths=visa_paths,
+                         exclude_sources=exclude_sources, allow_unknown_team=not crustdata_api_key)
         if crustdata_api_key:
             _enrich_batch(conn, crustdata_api_key, picked)
         picked = [l for l in picked if visa.apply(conn, l) in (visa_paths or visa.PATHS)]
@@ -814,6 +821,7 @@ def find(
         "returned": len(picked),
         "leads": picked,
         "remaining_pool": leads_store.count_new(conn),
+        "by_source": dict(Counter(l.get("fund") or l.get("source") or "unknown" for l in picked)),
         "crawl": report or None,
         "stats": leads_store.stats(conn),
         "warnings": quota_warnings(),

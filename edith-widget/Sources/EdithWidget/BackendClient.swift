@@ -244,6 +244,7 @@ struct StartupLead: Decodable, Identifiable, Hashable {
 struct StartupFindResult: Decodable {
     let returned: Int
     let remainingPool: Int
+    let bySource: [String: Int]?
     let leads: [StartupLead]
     let warnings: [String]?
 }
@@ -259,8 +260,8 @@ extension BackendClient {
         return decoder
     }()
 
-    func findStartups(count: Int, kind: String? = nil, location: String? = nil, visa: [String]? = nil) async throws -> StartupFindResult {
-        var payload: [String: Any] = ["token": apiToken, "count": count]
+    func findStartups(count: Int, kind: String? = nil, location: String? = nil, visa: [String]? = nil, crustdata: Bool = true) async throws -> StartupFindResult {
+        var payload: [String: Any] = ["token": apiToken, "count": count, "crustdata": crustdata]
         if let kind { payload["kind"] = kind }
         if let location, !location.isEmpty { payload["location"] = location }
         if let visa, !visa.isEmpty { payload["visa"] = visa }
