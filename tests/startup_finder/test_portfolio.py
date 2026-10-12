@@ -28,6 +28,12 @@ ROWS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def no_site_fetches(monkeypatch):
+    monkeypatch.setattr(sources, "site_blurb", lambda domain: "")
+    monkeypatch.setattr(sources, "portfolio_details", lambda url: [])
+
+
 @pytest.mark.real_portfolio
 def test_portfolio_sources_extracts_and_caches(tmp_path, monkeypatch):
     conn = db.connect(tmp_path / "t.db")
@@ -66,3 +72,43 @@ def test_no_client_and_no_cache_skips(tmp_path, monkeypatch):
     monkeypatch.setattr(sources, "portfolio_page_text", lambda url: pytest.fail("should not fetch"))
     leads, report = finder.portfolio_sources(conn, None, "m")
     assert leads == []
+
+
+@pytest.mark.real_portfolio
+def test_name_only_page_falls_back_to_detail_pages_and_blurbs(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "t.db")
+    monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Northzone": ("https://example.com", None)})
+    monkeypatch.setattr(sources, "portfolio_page_text", lambda url: "page text")
+    monkeypatch.setattr(sources, "portfolio_details", lambda url: [
+        {"name": "Cusp", "domain": "cuspai.com", "about": "", "country": ""},
+        {"name": "Klarna", "domain": "klarna.com", "about": "", "country": ""},
+    ])
+    monkeypatch.setattr(sources, "site_blurb", lambda d: "Cusp — generative AI for materials" if d == "cuspai.com" else "")
+    rows = [{"name": n, "domain": "", "about": "", "country": ""} for n in ("Cusp", "Klarna", "Other")]
+    leads, report = finder.portfolio_sources(conn, _Client(rows), "m")
+    assert report["sources"] == {"Northzone portfolio": 2}
+    assert {l["domain"]: l["description"] for l in leads} == {"cuspai.com": "Cusp — generative AI for materials", "klarna.com": ""}
+
+
+@pytest.mark.real_portfolio
+def test_old_cache_is_upgraded_without_reextracting(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    conn = db.connect(tmp_path / "t.db")
+    monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Seedcamp": ("https://example.com", None)})
+    monkeypatch.setattr(sources, "site_blurb", lambda d: "AI agents for lawyers")
+    store.set_meta(conn, "startup_finder_portfolio:Seedcamp", json.dumps(
+        {"at": datetime.now(timezone.utc).isoformat(), "companies": [{"name": "Lexa", "domain": "lexa.io", "about": "", "country": ""}]}))
+    client = _Client([])
+    leads, _ = finder.portfolio_sources(conn, client, "m")
+    assert client.calls == 0 and leads[0]["description"] == "AI agents for lawyers"
+    assert json.loads(store.get_meta(conn, "startup_finder_portfolio:Seedcamp"))["v"] == finder.PORTFOLIO_VERSION
+
+
+def test_detail_links_and_host_pick():
+    page = '<a href="/portfolio/cusp-ai">x</a><a href="https://fund.com/portfolio/klarna">k</a><a href="/portfolio?page=2">p</a><a href="/about">a</a>'
+    assert sources.portfolio_detail_links("https://fund.com/portfolio", page) == [
+        "https://fund.com/portfolio/cusp-ai", "https://fund.com/portfolio/klarna"]
+    assert sources.pick_company_host("cuspai", ["agency.com", "cuspai.com"], {"agency.com"}) == "cuspai.com"
+    assert sources.pick_company_host("klarna", ["agency.com"], {"agency.com"}) is None
+    assert sources.pick_company_host("klarna", ["news.com", "blog.com"], set()) is None
+    assert sources.pick_company_host("klarna", ["klarna.se"], set()) == "klarna.se"

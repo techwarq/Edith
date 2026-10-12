@@ -151,6 +151,24 @@ def _extract_portfolio(genai_client: Any, model: str, fund: str, text: str) -> l
     return companies
 
 
+PORTFOLIO_VERSION = 2
+THIN_ABOUT = 40
+
+
+def _augment_portfolio(url: str, companies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    with_domain = [c for c in companies if c.get("domain")]
+    if len(with_domain) < len(companies) * 0.5:
+        have = {sources.domain_of(c["domain"]) for c in with_domain}
+        with_domain += [d for d in sources.portfolio_details(url) if sources.domain_of(d["domain"]) not in have]
+    thin = [c for c in with_domain if len(c.get("about") or "") < THIN_ABOUT
+            and not qualify._has_any(qualify._blob(c["name"], c.get("about")), qualify.AI_TERMS)]
+    with ThreadPoolExecutor(16) as ex:
+        for c, blurb in zip(thin, ex.map(lambda c: sources.site_blurb(sources.domain_of(c["domain"]) or ""), thin)):
+            if blurb:
+                c["about"] = blurb
+    return with_domain
+
+
 def _portfolio_leads(fund: str, companies: list[dict[str, Any]], default_region: Optional[str]) -> list[dict[str, Any]]:
     leads = []
     for c in companies:
@@ -184,21 +202,26 @@ def portfolio_sources(conn: sqlite3.Connection, genai_client: Any, model: str) -
         fund, (url, default_region) = item
         key = f"startup_finder_portfolio:{fund}"
         cached = store.get_meta(conn, key)
+        companies = None
         if cached:
             try:
                 data = json.loads(cached)
                 if now - datetime.fromisoformat(data["at"]) < PORTFOLIO_TTL:
-                    return fund, _portfolio_leads(fund, data["companies"], default_region), None
+                    if data.get("v") == PORTFOLIO_VERSION:
+                        return fund, _portfolio_leads(fund, data["companies"], default_region), None
+                    companies = data["companies"]
             except (ValueError, KeyError):
                 pass
-        if genai_client is None:
+        if companies is None and genai_client is None:
             return fund, [], None
         try:
-            companies = _extract_portfolio(genai_client, model, fund, sources.portfolio_page_text(url))
+            if companies is None:
+                companies = _extract_portfolio(genai_client, model, fund, sources.portfolio_page_text(url))
+            companies = _augment_portfolio(url, companies)
         except Exception as e:
             return fund, [], str(e)[:200]
         if companies:
-            store.set_meta(conn, key, json.dumps({"at": now.isoformat(), "companies": companies}))
+            store.set_meta(conn, key, json.dumps({"at": now.isoformat(), "v": PORTFOLIO_VERSION, "companies": companies}))
         return fund, _portfolio_leads(fund, companies, default_region), None
 
     leads: list[dict[str, Any]] = []

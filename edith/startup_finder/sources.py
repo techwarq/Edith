@@ -472,6 +472,103 @@ def portfolio_page_text(url: str, limit: int = 160_000) -> str:
     return (text + " " + scripts)[:limit]
 
 
+_ASSET_HOST = re.compile(
+    r"website-files|intellimize|googleapis|gstatic|parastorage|wixstatic|cloudfront|typekit|fonts\.|wp\.com|wordpress|"
+    r"jsdelivr|unpkg|hubspot|hsforms|cookiebot|onetrust|calendly|substack|spotify|soundcloud|bit\.ly|cdn|static\.",
+    re.I,
+)
+_HREF = re.compile(r'href="([^"#]+)"', re.I)
+_JSON_LINK = re.compile(r'"(?:external_link|website|website_url|homepage|company_url|url)"\s*:\s*"(https?:[^"]+)"', re.I)
+_META_DESC = re.compile(r'<meta[^>]+(?:name|property)="(?:og:)?description"[^>]+content="([^"]*)"', re.I)
+_META_TITLE = re.compile(r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"|<title[^>]*>(.*?)</title>', re.I | re.S)
+DETAIL_SECTIONS = ("portfolio", "companies", "company", "investments")
+MAX_DETAIL_PAGES = 250
+
+
+def _get(url: str, timeout: int = 10) -> Optional[requests.Response]:
+    try:
+        r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout)
+    except requests.exceptions.RequestException:
+        return None
+    return r if r.ok else None
+
+
+def portfolio_detail_links(url: str, page_html: str) -> list[str]:
+    base = urlparse(url)
+    links: list[str] = []
+    for href in _HREF.findall(page_html):
+        u = urlparse(href if "://" in href else f"{base.scheme}://{base.netloc}/{href.lstrip('/')}")
+        if u.netloc.replace("www.", "") != base.netloc.replace("www.", "") or u.query:
+            continue
+        parts = [p for p in u.path.split("/") if p]
+        if len(parts) == 2 and parts[0] in DETAIL_SECTIONS:
+            full = f"{base.scheme}://{u.netloc}/{parts[0]}/{parts[1]}"
+            if full not in links:
+                links.append(full)
+    return links[:MAX_DETAIL_PAGES]
+
+
+def _slug_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def _detail_page(url: str) -> Optional[dict[str, Any]]:
+    r = _get(url)
+    if r is None:
+        return None
+    fund_host = urlparse(url).netloc.replace("www.", "").split(".")[0]
+    hosts: list[str] = []
+    found = _HREF.findall(_SCRIPT_STYLE.sub(" ", r.text)) + [u.replace("\\/", "/") for u in _JSON_LINK.findall(r.text)]
+    for href in found:
+        host = urlparse(href).netloc.lower().replace("www.", "") if href.startswith("http") else ""
+        if host and fund_host not in host and not _SOCIAL.search(host) and not _ASSET_HOST.search(host) and host not in hosts:
+            hosts.append(host)
+    title = _META_TITLE.search(r.text)
+    name = html.unescape(next((g for g in title.groups() if g), "") if title else "")
+    name = re.split(r"\s[|–—-]\s", name)[0].strip()
+    slug = url.rstrip("/").rsplit("/", 1)[-1]
+    if not name or fund_host in name.lower().replace(" ", ""):
+        name = slug.replace("-", " ").title()
+    desc = _META_DESC.search(r.text)
+    return {"slug": _slug_key(slug), "hosts": hosts, "name": name, "about": html.unescape(desc.group(1)).strip()[:300] if desc else ""}
+
+
+def pick_company_host(slug: str, hosts: list[str], common: set[str]) -> Optional[str]:
+    hosts = [h for h in hosts if h not in common]
+    stem = lambda h: _slug_key(h.split(".")[0])
+    match = next((h for h in hosts if slug and stem(h) and (stem(h) in slug or slug in stem(h))), None)
+    return match or (hosts[0] if len(hosts) == 1 else None)
+
+
+def portfolio_details(url: str) -> list[dict[str, str]]:
+    r = _get(url, TIMEOUT)
+    if r is None:
+        return []
+    links = portfolio_detail_links(r.url, r.text)
+    with ThreadPoolExecutor(12) as ex:
+        pages = [p for p in ex.map(_detail_page, links) if p]
+    seen: dict[str, int] = {}
+    for p in pages:
+        for h in p["hosts"]:
+            seen[h] = seen.get(h, 0) + 1
+    common = {h for h, n in seen.items() if n >= max(3, len(pages) * 0.2)}
+    out = []
+    for p in pages:
+        if host := pick_company_host(p["slug"], p["hosts"], common):
+            out.append({"name": p["name"], "domain": host, "about": p["about"], "country": ""})
+    return out
+
+
+def site_blurb(domain: str) -> str:
+    r = _get(f"https://{domain}", timeout=8)
+    if r is None:
+        return ""
+    desc = _META_DESC.search(r.text)
+    title = _META_TITLE.search(r.text)
+    parts = [next((g for g in title.groups() if g), "") if title else "", desc.group(1) if desc else ""]
+    return _clean(html.unescape(" — ".join(p.strip() for p in parts if p.strip())))[:300]
+
+
 HUB_COUNTRIES = {"NO": "Norway"}
 HUB_SIZES = {"1-10": 5, "11-50": 30}
 HUB_FUNDED_STAGES = {"seed", "seriesa", "seriesb", "seriesc", "seriesd", "growth"}
