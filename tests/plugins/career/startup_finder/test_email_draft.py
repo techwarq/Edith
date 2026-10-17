@@ -53,9 +53,9 @@ def test_compose_role_intro_and_no_like():
 
 
 def test_to_html_links_known_urls_only():
-    out = email_draft.to_html("- live on nagent.ai: script in\n- evals (github.com/techwarq/ai-lens)\n- lip-sync & <b>")
-    assert '<a href="https://nagent.ai">nagent.ai</a>:' in out
-    assert '<a href="https://github.com/techwarq/ai-lens">github.com/techwarq/ai-lens</a>)' in out
+    out = email_draft.to_html("- live on example.ai: script in\n- evals (github.com/octocat/ai-lens)\n- lip-sync & <b>")
+    assert '<a href="https://example.ai">example.ai</a>:' in out
+    assert '<a href="https://github.com/octocat/ai-lens">github.com/octocat/ai-lens</a>)' in out
     assert "&lt;b&gt;" in out and "lip-sync" in out
 
 
@@ -137,10 +137,10 @@ def test_for_recipient_swaps_greeting_only():
 
 
 def test_portfolio_link_gets_utm_tags_only_on_own_site():
-    out = email_draft.to_html("- live on nagent.ai\n- portfolio: alexdoe.dev", campaign="factiverse", content="vinay")
+    out = email_draft.to_html("- live on example.ai\n- portfolio: alexdoe.dev", campaign="factiverse", content="vinay")
     assert ('href="https://alexdoe.dev/?utm_source=email&amp;utm_medium=cold_email&amp;utm_campaign=factiverse'
             '&amp;utm_content=vinay">alexdoe.dev</a>') in out
-    assert 'href="https://nagent.ai">nagent.ai</a>' in out
+    assert 'href="https://example.ai">example.ai</a>' in out
     assert 'href="https://alexdoe.dev">' in email_draft.to_html("portfolio: alexdoe.dev")
     assert email_draft.utm_slug("Simplifai AS") == "simplifai" and email_draft.utm_slug("Let's Enhance") == "let-s-enhance"
 

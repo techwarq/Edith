@@ -15,7 +15,7 @@ export function DailyBriefing({
   turnsToday,
   toolCallsToday,
 }: {
-  name: string;
+  name?: string;
   todosDoneToday: Todo[];
   turnsToday: number;
   toolCallsToday: number;
@@ -25,7 +25,7 @@ export function DailyBriefing({
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">
-        {greeting()}, {name}.
+        {greeting()}{name ? `, ${name}` : ""}.
       </h1>
       <p className="text-sm text-muted mt-1">
         {turnsToday > 0

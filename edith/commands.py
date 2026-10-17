@@ -45,7 +45,7 @@ def handle_command(
 
     if cmd == "/afame":
         if not arg:
-            return session_id, voice_enabled, "Usage: /afame <fact about you>, e.g. /afame I work as a PM at Allore"
+            return session_id, voice_enabled, "Usage: /afame <fact about you>, e.g. /afame I work as a PM at Acme"
         directive = (
             f"Remember this about me using the remember tool right now "
             f"(don't just chat about it, actually call the tool), then briefly confirm "

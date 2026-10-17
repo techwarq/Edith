@@ -128,7 +128,7 @@ Android app.
 | Work your inbox and calendar | *"What did the bank email me about this week?"* · *"Put a dentist appointment on Friday at 4"* |
 | Be reminded / run things on a schedule | *"Every weekday at 9, check my todos and ask me about them"* · *"Remind me in 20 minutes to call mom"* |
 | Track goals and todos | *"I want to run a half marathon by March"* (becomes a goal with milestones) · *"Add: renew passport"* |
-| Look something up fast | *"What's the weather in Bengaluru?"* · *"Find me the YouTube video of that Karpathy tokenizer talk"* |
+| Look something up fast | *"What's the weather in Lisbon?"* · *"Find me the YouTube video of that Karpathy tokenizer talk"* |
 | Use any tool you plug in | Add an MCP server in the **Integrations** tab and just ask for it |
 
 **Memory works on its own.** You never have to say "save this". After each exchange Eddy decides what's

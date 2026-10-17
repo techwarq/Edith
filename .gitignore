@@ -12,3 +12,9 @@ build/
 *.dmg
 *.apk
 *.aab
+
+# Personal / local-only — never pushed
+skills/
+edith/start_finderv2/
+career_profile.json
+.DS_Store

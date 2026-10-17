@@ -1,4 +1,4 @@
-"""LinkedIn OAuth 2.0 for Abstrak Labs (77qb6yf4wyt9e3).
+"""LinkedIn OAuth 2.0 for your LinkedIn developer app (LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET).
 
 Flow:
   1. GET /api/linkedin/auth/start?token=EDITH_API_TOKEN → returns auth_url
@@ -11,9 +11,9 @@ Scopes requested correspond to Products you enable in the LinkedIn Developer por
   - Share on LinkedIn: w_member_social
   - Community Management (for Company Pages): w_organization_social, r_organization_social, r_organization_admin
 
-Add redirect URLs in your screenshot's "Authorized redirect URLs" section:
-  http://localhost:8000/api/linkedin/callback
-  https://<your-railway>.up.railway.app/api/linkedin/callback
+Add redirect URLs in the app's "Authorized redirect URLs" section:
+  http://localhost:8787/api/linkedin/callback
+  https://<your-host>/api/linkedin/callback
 Both must exactly match LINKEDIN_REDIRECT_URI at request time.
 """
 import logging
@@ -110,7 +110,7 @@ def verify_state(conn, state: str) -> bool:
 def build_auth_url(conn, redirect_uri: Optional[str] = None, scopes: Optional[str] = None) -> tuple[str, str]:
     cid, csec, cfg_redir = _get_cfg()
     if not cid:
-        raise RuntimeError("LINKEDIN_CLIENT_ID not set. Copy Client ID from your screenshot (77qb6yf4wyt9e3) into .env")
+        raise RuntimeError("LINKEDIN_CLIENT_ID not set. Copy the Client ID from your LinkedIn developer app into .env")
     redir = (redirect_uri or cfg_redir or "").strip()
     if not redir:
         # default to localhost callback for dev

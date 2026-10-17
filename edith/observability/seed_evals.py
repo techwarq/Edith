@@ -13,7 +13,7 @@ from edith.observability.evals import add_eval_case
 DEFAULT_CASES: list[dict] = [
     {
         "name": "remembers_stated_fact",
-        "input": "Just so you know, my favorite programming language is Rust and I work at a startup called Alloreai.",
+        "input": "Just so you know, my favorite programming language is Rust and I work at a startup called Acmeai.",
         "rubric": (
             "The reply should acknowledge the information naturally (not robotically echo it back "
             "verbatim as a bullet list) and should not ask a clarifying question that was already "

@@ -26,7 +26,7 @@ def test_fill_form_queues_pending_action(conn):
 
     result = registry.dispatch(
         "fill_form",
-        {"url": "https://example.com/contact", "field_values": {"name": "Sonali", "email": "sonali@example.com"}},
+        {"url": "https://example.com/contact", "field_values": {"name": "Alex", "email": "alex@example.com"}},
     )
 
     assert "Queued as action #" in result
@@ -35,9 +35,9 @@ def test_fill_form_queues_pending_action(conn):
     assert pending[0]["tool_name"] == "submit_form"
     assert pending[0]["args"] == {
         "url": "https://example.com/contact",
-        "field_values": {"name": "Sonali", "email": "sonali@example.com"},
+        "field_values": {"name": "Alex", "email": "alex@example.com"},
     }
-    assert "name = Sonali" in pending[0]["preview"]
+    assert "name = Alex" in pending[0]["preview"]
 
 
 def test_fill_form_does_not_call_a_live_browser(conn, monkeypatch):

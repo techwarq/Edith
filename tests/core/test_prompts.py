@@ -6,11 +6,11 @@ def _note(context, region, id=1):
 
 
 def test_core_memories_are_grouped_by_region():
-    core = [_note("Works as a PM at Allore.", "career"), _note("Wants concise answers.", "preferences", 2)]
+    core = [_note("Works as a PM at Acme.", "career"), _note("Wants concise answers.", "preferences", 2)]
     prompt = build_system_prompt(core)
 
     section = prompt.split("## What you know about the user (core memories, by region)")[1].split("##")[0]
-    assert "- career:\n  - Works as a PM at Allore." in section
+    assert "- career:\n  - Works as a PM at Acme." in section
     assert "- preferences:\n  - Wants concise answers." in section
 
 

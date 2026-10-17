@@ -27,7 +27,7 @@ def test_repo_info_formats_summary(monkeypatch):
         monkeypatch,
         _fake_response(
             {
-                "full_name": "techwarq/edith",
+                "full_name": "octocat/edith",
                 "description": "personal AI agent",
                 "language": "Python",
                 "stargazers_count": 3,
@@ -37,8 +37,8 @@ def test_repo_info_formats_summary(monkeypatch):
             }
         ),
     )
-    result = r.dispatch("github_repo_info", {"repo": "techwarq/edith"})
-    assert "techwarq/edith: personal AI agent" in result
+    result = r.dispatch("github_repo_info", {"repo": "octocat/edith"})
+    assert "octocat/edith: personal AI agent" in result
     assert "Stars: 3" in result
     assert "Private: True" in result
 
@@ -48,42 +48,42 @@ def test_list_issues_excludes_pull_requests(monkeypatch):
         monkeypatch,
         _fake_response(
             [
-                {"number": 1, "title": "real issue", "user": {"login": "sonali"}},
-                {"number": 2, "title": "a PR", "user": {"login": "sonali"}, "pull_request": {}},
+                {"number": 1, "title": "real issue", "user": {"login": "alexd"}},
+                {"number": 2, "title": "a PR", "user": {"login": "alexd"}, "pull_request": {}},
             ]
         ),
     )
-    result = r.dispatch("github_list_issues", {"repo": "techwarq/edith"})
+    result = r.dispatch("github_list_issues", {"repo": "octocat/edith"})
     assert "#1 real issue" in result
     assert "#2" not in result
 
 
 def test_list_issues_none_found(monkeypatch):
     r = _registry(monkeypatch, _fake_response([]))
-    result = r.dispatch("github_list_issues", {"repo": "techwarq/edith"})
-    assert result == "No open issues on techwarq/edith."
+    result = r.dispatch("github_list_issues", {"repo": "octocat/edith"})
+    assert result == "No open issues on octocat/edith."
 
 
 def test_list_prs_formats(monkeypatch):
     r = _registry(
         monkeypatch,
-        _fake_response([{"number": 5, "title": "add feature", "user": {"login": "sonali"}, "base": {"ref": "main"}}]),
+        _fake_response([{"number": 5, "title": "add feature", "user": {"login": "alexd"}, "base": {"ref": "main"}}]),
     )
-    result = r.dispatch("github_list_prs", {"repo": "techwarq/edith"})
-    assert result == "#5 add feature (by sonali) -> main"
+    result = r.dispatch("github_list_prs", {"repo": "octocat/edith"})
+    assert result == "#5 add feature (by alexd) -> main"
 
 
 def test_read_file_decodes_base64(monkeypatch):
     content = "print('hello')"
     encoded = base64.b64encode(content.encode()).decode()
     r = _registry(monkeypatch, _fake_response({"encoding": "base64", "content": encoded}))
-    result = r.dispatch("github_read_file", {"repo": "techwarq/edith", "path": "main.py"})
+    result = r.dispatch("github_read_file", {"repo": "octocat/edith", "path": "main.py"})
     assert result == content
 
 
 def test_read_file_directory_lists_names(monkeypatch):
     r = _registry(monkeypatch, _fake_response([{"name": "main.py"}, {"name": "README.md"}]))
-    result = r.dispatch("github_read_file", {"repo": "techwarq/edith", "path": "."})
+    result = r.dispatch("github_read_file", {"repo": "octocat/edith", "path": "."})
     assert result == "'.' is a directory: main.py, README.md"
 
 

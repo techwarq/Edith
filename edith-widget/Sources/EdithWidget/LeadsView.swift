@@ -658,7 +658,7 @@ private struct EmailComposer: View {
                     .frame(minHeight: 190)
                     .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
                 HStack(spacing: 6) {
-                    Label("Sonali_Nayak_Resume.pdf", systemImage: "paperclip")
+                    Label("Resume attached", systemImage: "paperclip")
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.45))
                     Spacer()

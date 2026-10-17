@@ -268,8 +268,8 @@ def test_count_sent_today(conn):
 
 def test_resume_text_roundtrip(conn):
     assert career.get_resume_text(conn) is None
-    career.save_resume_text(conn, "Sonali Nayak, Full Stack Engineer...", "resume.pdf")
-    assert career.get_resume_text(conn) == "Sonali Nayak, Full Stack Engineer..."
+    career.save_resume_text(conn, "Alex Doe, Full Stack Engineer...", "resume.pdf")
+    assert career.get_resume_text(conn) == "Alex Doe, Full Stack Engineer..."
     career.save_resume_text(conn, "updated text", "resume.pdf")
     assert career.get_resume_text(conn) == "updated text"
 

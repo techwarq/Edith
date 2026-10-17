@@ -972,9 +972,9 @@ function renderContent(panel, authors, posts, weekDays, digest) {
     <div id="content-list">
       ${posts.length ? posts.map(renderContentCard).join("") : '<div class="empty-state">No queue yet today — hit “Generate today\'s queue”. Grounded in your shipped commits + viral playbooks (shengkunye / MonidHQ / arlanr).</div>'}
     </div>
-    <div class="panel-header"><h3>This week — Talo growth arc</h3><span class="see-all-link" id="content-week-generate">Generate week →</span></div>
+    <div class="panel-header"><h3>This week — campaign arc</h3><span class="see-all-link" id="content-week-generate">Generate week →</span></div>
     <div id="content-week">
-      ${(weekDays || []).length ? weekDays.map(renderContentDay).join("") : '<div class="empty-state">No week plan yet — 7 days × (1 LinkedIn + 2 X) to grow talo.abstraklabs.com. Hit “Generate week”.</div>'}
+      ${(weekDays || []).length ? weekDays.map(renderContentDay).join("") : '<div class="empty-state">No week plan yet — 7 days × (1 LinkedIn + 2 X) for the campaign in your career profile. Hit “Generate week”.</div>'}
     </div>
     <h3>Shipped this week (${commitCount} commits)</h3>
     <div class="list-item"><div class="list-detail" style="border:none;margin:0;padding:0">${digestLines}</div></div>

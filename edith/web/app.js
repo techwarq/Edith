@@ -25,7 +25,7 @@ let isRecording = false;
 // this on web, so it's not a typed command here). Keep this in sync with
 // edith/commands.py and edith/bootstrap.py's WELCOME text.
 const COMMANDS = [
-  { name: "/afame", desc: "Save a fact about yourself, e.g. /afame I work as a PM at Allore" },
+  { name: "/afame", desc: "Save a fact about yourself, e.g. /afame I work as a PM at Acme" },
   { name: "/voice on", desc: "Speak Edith's typed replies aloud" },
   { name: "/voice off", desc: "Turn off spoken replies" },
   { name: "/google login", desc: "Connect Gmail, Drive, Calendar, Docs, Sheets" },

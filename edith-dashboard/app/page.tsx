@@ -82,7 +82,7 @@ export default function Home() {
       </header>
 
       {/* hero: what edith has done today */}
-      <DailyBriefing name="Sonali" todosDoneToday={todosDoneToday} turnsToday={turnsToday} toolCallsToday={toolCallsToday} />
+      <DailyBriefing todosDoneToday={todosDoneToday} turnsToday={turnsToday} toolCallsToday={toolCallsToday} />
 
       {/* goals + live reasoning */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

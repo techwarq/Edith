@@ -29,7 +29,7 @@ def test_remember_reports_where_it_was_filed(conn):
     }
     registry = _registry(conn, Brain(conn, llm, "m", FakeQdrant()))
 
-    result = registry.dispatch("remember", {"content": "Sonali prefers calls after 4pm"})
+    result = registry.dispatch("remember", {"content": "Alex prefers calls after 4pm"})
 
     assert result == "Remembered as #1 in 'preferences', core: Prefers calls after 4pm."
 

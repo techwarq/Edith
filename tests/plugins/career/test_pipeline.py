@@ -26,7 +26,6 @@ def test_instruction_is_built_from_the_profile(example_career_profile):
     text = pipeline.job_search_instruction(3)
     assert "Alex Doe, Full-stack / AI Engineer" in text
     assert example_career_profile["jobs"]["target_roles"] in text
-    assert "Sonali" not in text
 
 
 def test_enable_jobs_pipeline_schedules_profile_instruction(registry, monkeypatch):

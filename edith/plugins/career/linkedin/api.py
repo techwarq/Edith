@@ -626,7 +626,7 @@ def build_router(conn, genai_client, api_token: str) -> APIRouter:
         accept = request.headers.get("accept","")
         if "text/html" in accept:
             authors_html = "".join(f"<li>{a['type']}: {a['urn']} — {a['name']}</li>" for a in result["authors"]) or "<li>no author created — check scopes</li>"
-            html = f"""<html><body style="font-family:system-ui;padding:32px"><h2>LinkedIn connected ✅</h2><p>Abstrak Labs connected as:</p><ul>{authors_html}</ul><p>You can close this window. Tokens stored in edith.</p><script>setTimeout(()=>window.close(),5000)</script></body></html>"""
+            html = f"""<html><body style="font-family:system-ui;padding:32px"><h2>LinkedIn connected ✅</h2><p>Connected as:</p><ul>{authors_html}</ul><p>You can close this window. Tokens stored in edith.</p><script>setTimeout(()=>window.close(),5000)</script></body></html>"""
             from fastapi.responses import HTMLResponse
             return HTMLResponse(html)
         return JSONResponse(result)

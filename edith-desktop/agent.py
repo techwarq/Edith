@@ -4,7 +4,7 @@ Takes a brand brief as input, uses TOOLS + an LLM to find, enrich,
 score, and save leads.
 
   python agent.py --brand "Acme Coffee" --product "cold brew cans" \\
-      --customer "cafes and offices in Bengaluru" --count 10
+      --customer "cafes and offices in Berlin" --count 10
 
 Or interactive (no flags):
   python agent.py
@@ -216,7 +216,7 @@ def tool_save_leads(leads_json: str) -> str:
 TOOLS: list[dict] = [
     {"type": "function", "function": {
         "name": "web_search",
-        "description": "Search the live web for candidate buyers/partners/distributors. Use specific queries like 'specialty coffee distributors Bengaluru'.",
+        "description": "Search the live web for candidate buyers/partners/distributors. Use specific queries like 'specialty coffee distributors Berlin'.",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string"},
             "max_results": {"type": "integer", "description": "default 5"}}, "required": ["query"]}}},

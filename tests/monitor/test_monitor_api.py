@@ -116,11 +116,11 @@ def test_analytics_not_configured_when_token_set_but_no_projects_tracked(tmp_pat
 
 def test_analytics_returns_one_tile_per_tracked_project(tmp_path, monkeypatch):
     client, conn = _client(tmp_path, vercel_analytics_token="tok")
-    system.set_setting(conn, key="prj_snips", value="Snips", category=VERCEL_PROJECT_CATEGORY)
-    system.set_setting(conn, key="prj_allore", value="Allore AI", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_notes", value="Notes", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_acme", value="Acme AI", category=VERCEL_PROJECT_CATEGORY)
 
     def fake_pageviews(token, project_id, team_id, days):
-        return {"configured": True, "pageviews": 100 if project_id == "prj_snips" else 200, "days": days}
+        return {"configured": True, "pageviews": 100 if project_id == "prj_notes" else 200, "days": days}
 
     monkeypatch.setattr(vercel_analytics, "get_pageview_summary", fake_pageviews)
 
@@ -128,8 +128,8 @@ def test_analytics_returns_one_tile_per_tracked_project(tmp_path, monkeypatch):
     body = resp.json()
     assert body["configured"] is True
     by_id = {p["project_id"]: p for p in body["projects"]}
-    assert by_id["prj_snips"] == {"project_id": "prj_snips", "label": "Snips", "pageviews": 100, "days": 30}
-    assert by_id["prj_allore"] == {"project_id": "prj_allore", "label": "Allore AI", "pageviews": 200, "days": 30}
+    assert by_id["prj_notes"] == {"project_id": "prj_notes", "label": "Notes", "pageviews": 100, "days": 30}
+    assert by_id["prj_acme"] == {"project_id": "prj_acme", "label": "Acme AI", "pageviews": 200, "days": 30}
 
 
 def test_analytics_one_project_erroring_does_not_break_the_others(tmp_path, monkeypatch):
@@ -169,44 +169,44 @@ def test_shipping_not_configured_when_nothing_tracked(tmp_path):
 
 def test_shipping_repos_add_and_delete(tmp_path):
     client, conn = _client(tmp_path)
-    add_resp = client.post("/api/monitor/shipping/repos", json={"token": TOKEN, "repo": "techwarq/edith", "label": "Edith"})
+    add_resp = client.post("/api/monitor/shipping/repos", json={"token": TOKEN, "repo": "octocat/edith", "label": "Edith"})
     assert add_resp.status_code == 200
     assert system.list_settings(conn, SHIPPING_REPO_CATEGORY) == [
-        {"key": "techwarq/edith", "value": "Edith", "category": SHIPPING_REPO_CATEGORY}
+        {"key": "octocat/edith", "value": "Edith", "category": SHIPPING_REPO_CATEGORY}
     ]
 
-    del_resp = client.post("/api/monitor/shipping/repos/delete", json={"token": TOKEN, "repo": "techwarq/edith"})
+    del_resp = client.post("/api/monitor/shipping/repos/delete", json={"token": TOKEN, "repo": "octocat/edith"})
     assert del_resp.json() == {"ok": True}
     assert system.list_settings(conn, SHIPPING_REPO_CATEGORY) == []
 
 
 def test_shipping_accounts_add_and_delete(tmp_path):
     client, conn = _client(tmp_path)
-    add_resp = client.post("/api/monitor/shipping/accounts", json={"token": TOKEN, "username": "techwarq"})
+    add_resp = client.post("/api/monitor/shipping/accounts", json={"token": TOKEN, "username": "octocat"})
     assert add_resp.status_code == 200
     assert system.list_settings(conn, SHIPPING_ACCOUNT_CATEGORY) == [
-        {"key": "techwarq", "value": "techwarq", "category": SHIPPING_ACCOUNT_CATEGORY}
+        {"key": "octocat", "value": "octocat", "category": SHIPPING_ACCOUNT_CATEGORY}
     ]
 
-    del_resp = client.post("/api/monitor/shipping/accounts/delete", json={"token": TOKEN, "username": "techwarq"})
+    del_resp = client.post("/api/monitor/shipping/accounts/delete", json={"token": TOKEN, "username": "octocat"})
     assert del_resp.json() == {"ok": True}
     assert system.list_settings(conn, SHIPPING_ACCOUNT_CATEGORY) == []
 
 
 def test_shipping_combines_repo_and_account_commits(tmp_path, monkeypatch):
     client, conn = _client(tmp_path)
-    system.set_setting(conn, key="techwarq/edith", value="Edith", category=SHIPPING_REPO_CATEGORY)
-    system.set_setting(conn, key="techwarq", value="techwarq", category=SHIPPING_ACCOUNT_CATEGORY)
+    system.set_setting(conn, key="octocat/edith", value="Edith", category=SHIPPING_REPO_CATEGORY)
+    system.set_setting(conn, key="octocat", value="octocat", category=SHIPPING_ACCOUNT_CATEGORY)
 
     monkeypatch.setattr(
         github_shipping,
         "get_recent_commits",
-        lambda repos, token: [{"repo": "techwarq/edith", "label": "Edith", "sha": "1111111", "message": "repo commit", "date": "2026-07-01T00:00:00Z"}],
+        lambda repos, token: [{"repo": "octocat/edith", "label": "Edith", "sha": "1111111", "message": "repo commit", "date": "2026-07-01T00:00:00Z"}],
     )
     monkeypatch.setattr(
         github_shipping,
         "get_account_activity",
-        lambda username, token: [{"repo": "techwarq/other", "label": "other", "sha": "2222222", "message": "account commit", "date": "2026-07-02T00:00:00Z"}],
+        lambda username, token: [{"repo": "octocat/other", "label": "other", "sha": "2222222", "message": "account commit", "date": "2026-07-02T00:00:00Z"}],
     )
 
     resp = client.get("/api/monitor/shipping", params={"token": TOKEN})

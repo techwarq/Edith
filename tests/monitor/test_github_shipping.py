@@ -12,14 +12,14 @@ class _FakeResponse:
 
 def test_get_recent_commits_formats_and_sorts(monkeypatch):
     def fake_get(url, headers=None, params=None, timeout=None):
-        if "techwarq/edith" in url:
+        if "octocat/edith" in url:
             return _FakeResponse(
                 200,
                 [
                     {
                         "sha": "abc1234567",
-                        "html_url": "https://github.com/techwarq/edith/commit/abc1234567",
-                        "commit": {"message": "fix infinite redirect\n\nmore detail", "author": {"name": "Sonali", "date": "2026-07-20T10:00:00Z"}},
+                        "html_url": "https://github.com/octocat/edith/commit/abc1234567",
+                        "commit": {"message": "fix infinite redirect\n\nmore detail", "author": {"name": "Alex", "date": "2026-07-20T10:00:00Z"}},
                     }
                 ],
             )
@@ -28,19 +28,19 @@ def test_get_recent_commits_formats_and_sorts(monkeypatch):
             [
                 {
                     "sha": "def7654321",
-                    "html_url": "https://github.com/techwarq/other/commit/def7654321",
-                    "commit": {"message": "add notifications", "author": {"name": "Sonali", "date": "2026-07-25T10:00:00Z"}},
+                    "html_url": "https://github.com/octocat/other/commit/def7654321",
+                    "commit": {"message": "add notifications", "author": {"name": "Alex", "date": "2026-07-25T10:00:00Z"}},
                 }
             ],
         )
 
     monkeypatch.setattr(github_shipping.requests, "get", fake_get)
 
-    repos = [{"repo": "techwarq/edith", "label": "Edith"}, {"repo": "techwarq/other", "label": "Other"}]
+    repos = [{"repo": "octocat/edith", "label": "Edith"}, {"repo": "octocat/other", "label": "Other"}]
     commits = github_shipping.get_recent_commits(repos, token="")
 
     assert len(commits) == 2
-    assert commits[0]["repo"] == "techwarq/other"  # newer date sorts first
+    assert commits[0]["repo"] == "octocat/other"  # newer date sorts first
     assert commits[0]["message"] == "add notifications"
     assert commits[1]["sha"] == "abc1234"  # truncated to 7 chars
     assert commits[1]["message"] == "fix infinite redirect"  # only first line kept
@@ -73,65 +73,65 @@ def _repo(full_name, name, fork=False):
 
 def test_get_account_activity_lists_repos_then_pulls_commits(monkeypatch):
     def fake_get(url, headers=None, params=None, timeout=None):
-        if url.endswith("/users/techwarq/repos"):
+        if url.endswith("/users/octocat/repos"):
             assert params["sort"] == "pushed"
-            return _FakeResponse(200, [_repo("techwarq/edith", "edith"), _repo("techwarq/allore-be", "allore-be")])
-        if url.endswith("/techwarq/edith/commits"):
+            return _FakeResponse(200, [_repo("octocat/edith", "edith"), _repo("octocat/acme-be", "acme-be")])
+        if url.endswith("/octocat/edith/commits"):
             return _FakeResponse(
                 200,
                 [
                     {
                         "sha": "938d6cc1234",
-                        "html_url": "https://github.com/techwarq/edith/commit/938d6cc1234",
-                        "commit": {"message": "Initial commit", "author": {"name": "techwarq", "date": "2026-07-30T01:52:44Z"}},
+                        "html_url": "https://github.com/octocat/edith/commit/938d6cc1234",
+                        "commit": {"message": "Initial commit", "author": {"name": "octocat", "date": "2026-07-30T01:52:44Z"}},
                     }
                 ],
             )
-        if url.endswith("/techwarq/allore-be/commits"):
+        if url.endswith("/octocat/acme-be/commits"):
             return _FakeResponse(
                 200,
                 [
                     {
                         "sha": "db67c481234",
-                        "html_url": "https://github.com/techwarq/allore-be/commit/db67c481234",
-                        "commit": {"message": "chore: gitignore", "author": {"name": "techwarq", "date": "2026-07-01T19:17:23Z"}},
+                        "html_url": "https://github.com/octocat/acme-be/commit/db67c481234",
+                        "commit": {"message": "chore: gitignore", "author": {"name": "octocat", "date": "2026-07-01T19:17:23Z"}},
                     }
                 ],
             )
         raise AssertionError(f"unexpected url {url}")
 
     monkeypatch.setattr(github_shipping.requests, "get", fake_get)
-    commits = github_shipping.get_account_activity("techwarq", token="")
+    commits = github_shipping.get_account_activity("octocat", token="")
 
     assert len(commits) == 2
-    assert commits[0]["repo"] == "techwarq/edith"  # newer date sorts first
+    assert commits[0]["repo"] == "octocat/edith"  # newer date sorts first
     assert commits[0]["label"] == "edith"
     assert commits[0]["message"] == "Initial commit"
-    assert commits[1]["label"] == "allore-be"
+    assert commits[1]["label"] == "acme-be"
 
 
 def test_get_account_activity_excludes_forks(monkeypatch):
     def fake_get(url, headers=None, params=None, timeout=None):
-        if url.endswith("/users/techwarq/repos"):
-            return _FakeResponse(200, [_repo("someone/upstream", "upstream", fork=True), _repo("techwarq/own", "own")])
-        assert "techwarq/own/commits" in url  # only the non-fork repo is ever queried for commits
+        if url.endswith("/users/octocat/repos"):
+            return _FakeResponse(200, [_repo("someone/upstream", "upstream", fork=True), _repo("octocat/own", "own")])
+        assert "octocat/own/commits" in url  # only the non-fork repo is ever queried for commits
         return _FakeResponse(200, [])
 
     monkeypatch.setattr(github_shipping.requests, "get", fake_get)
-    github_shipping.get_account_activity("techwarq", token="")
+    github_shipping.get_account_activity("octocat", token="")
 
 
 def test_get_account_activity_respects_repo_limit(monkeypatch):
     queried = []
 
     def fake_get(url, headers=None, params=None, timeout=None):
-        if url.endswith("/users/techwarq/repos"):
-            return _FakeResponse(200, [_repo(f"techwarq/r{i}", f"r{i}") for i in range(5)])
+        if url.endswith("/users/octocat/repos"):
+            return _FakeResponse(200, [_repo(f"octocat/r{i}", f"r{i}") for i in range(5)])
         queried.append(url)
         return _FakeResponse(200, [])
 
     monkeypatch.setattr(github_shipping.requests, "get", fake_get)
-    github_shipping.get_account_activity("techwarq", token="", repo_limit=2)
+    github_shipping.get_account_activity("octocat", token="", repo_limit=2)
     assert len(queried) == 2
 
 

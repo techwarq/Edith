@@ -93,7 +93,7 @@ def test_draft_job_application_success_grounded_and_persists(tmp_path):
         "body": "Hi team, I'd love to join Acme...",
     })
     r, conn = _registry(tmp_path, draft_text=draft)
-    career.save_resume_text(conn, "Sonali Nayak, Full Stack Engineer at Nagent AI...", "resume.pdf")
+    career.save_resume_text(conn, "Alex Doe, Full Stack Engineer at Acme AI...", "resume.pdf")
     r.dispatch("record_job_lead", {"company": "Acme Inc", "role_title": "Full Stack Engineer", "source": "",
                                     "source_url": "", "job_posting_url": "", "company_domain": "acme.com"})
 
@@ -187,7 +187,7 @@ def test_submit_job_application_form_queues_when_not_autonomous(tmp_path, monkey
     monkeypatch.setattr(browse, "execute_submit_form", fail_if_called)
 
     result = r.dispatch("submit_job_application_form", {
-        "application_id": 1, "url": "https://acme.com/apply", "field_values": {"name": "Sonali"},
+        "application_id": 1, "url": "https://acme.com/apply", "field_values": {"name": "Alex"},
     })
 
     assert "Queued as action #" in result
@@ -202,7 +202,7 @@ def test_submit_job_application_form_submits_directly_when_autonomous(tmp_path, 
     monkeypatch.setattr(browse, "execute_submit_form", lambda auth, args: f"Form submitted at {args['url']}.")
 
     result = r.dispatch("submit_job_application_form", {
-        "application_id": 1, "url": "https://acme.com/apply", "field_values": {"name": "Sonali"},
+        "application_id": 1, "url": "https://acme.com/apply", "field_values": {"name": "Alex"},
     })
 
     assert result == "Form submitted at https://acme.com/apply."

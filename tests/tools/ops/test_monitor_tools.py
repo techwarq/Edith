@@ -46,13 +46,13 @@ def test_resolve_unknown_id(registry):
 
 
 def test_track_list_untrack_shipping_repo(registry):
-    result = registry.dispatch("track_shipping_repo", {"repo": "techwarq/edith", "label": "Edith"})
-    assert "techwarq/edith" in result
+    result = registry.dispatch("track_shipping_repo", {"repo": "octocat/edith", "label": "Edith"})
+    assert "octocat/edith" in result
 
     listed = registry.dispatch("list_shipping_repos", {})
-    assert "techwarq/edith (Edith)" in listed
+    assert "octocat/edith (Edith)" in listed
 
-    untracked = registry.dispatch("untrack_shipping_repo", {"repo": "techwarq/edith"})
+    untracked = registry.dispatch("untrack_shipping_repo", {"repo": "octocat/edith"})
     assert "Stopped tracking" in untracked
     assert registry.dispatch("list_shipping_repos", {}) == "No repos are being tracked in the shipping log yet."
 
@@ -63,13 +63,13 @@ def test_untrack_unknown_repo(registry):
 
 
 def test_track_list_untrack_shipping_account(registry):
-    result = registry.dispatch("track_shipping_account", {"username": "techwarq"})
-    assert "techwarq" in result
+    result = registry.dispatch("track_shipping_account", {"username": "octocat"})
+    assert "octocat" in result
 
     listed = registry.dispatch("list_shipping_accounts", {})
-    assert listed == "techwarq"
+    assert listed == "octocat"
 
-    untracked = registry.dispatch("untrack_shipping_account", {"username": "techwarq"})
+    untracked = registry.dispatch("untrack_shipping_account", {"username": "octocat"})
     assert "Stopped tracking" in untracked
     assert registry.dispatch("list_shipping_accounts", {}) == "No GitHub accounts are being tracked in the shipping log yet."
 
@@ -80,12 +80,12 @@ def test_untrack_unknown_shipping_account(registry):
 
 
 def test_track_list_untrack_vercel_project(registry):
-    result = registry.dispatch("track_vercel_project", {"project_id": "prj_abc", "label": "Snips"})
-    assert "Snips" in result
+    result = registry.dispatch("track_vercel_project", {"project_id": "prj_abc", "label": "Notes"})
+    assert "Notes" in result
     assert "prj_abc" in result
 
     listed = registry.dispatch("list_vercel_projects", {})
-    assert "Snips (prj_abc)" in listed
+    assert "Notes (prj_abc)" in listed
 
     untracked = registry.dispatch("untrack_vercel_project", {"project_id": "prj_abc"})
     assert "Stopped tracking" in untracked
