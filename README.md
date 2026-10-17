@@ -181,6 +181,38 @@ or open the **Jobs** and **Content** tabs.
 | 🔎 **Researches** | `deep_research` breaks a question into sub-questions, searches each one, and writes a sourced answer. |
 | 📊 **Watches itself** | Every LLM and tool call is traced with cost and latency. An eval harness scores its answers (its first run caught a real hallucination bug). |
 
+## Memory benchmark: near-top recall on cheap models
+
+Eddy's memory was run on [LOCOMO](https://snap-research.github.io/locomo/) using
+[mem0's own benchmark harness](https://github.com/mem0ai/memory-benchmarks): the same dataset, the same
+answer prompt, the same judge prompt. Everything ran on cheap models: **qwen3.7-flash** for the memory
+and the answers ($0.03 / $0.13 per million tokens), **gpt-4o-mini** as the judge, embeddings at
+$0.004 per million tokens. No Gemini, no GPT-5.
+
+| | Eddy | mem0 platform (same questions) |
+|---|---|---|
+| Overall | **90.4%** | 92.3% |
+| Single-hop | 91.4% | 91.6% |
+| Multi-hop | 91.4% | 95.7% |
+| Temporal | 88.5% | 96.0% |
+| Open-domain (reasoning across facts) | **86.3%** | 76.5% |
+| Models | qwen3.7-flash + gpt-4o-mini judge | gpt-5 answerer + gpt-5 judge |
+| Memories shown per question | ~57 (20 matches + their links) | 200 |
+| **Total cost of the run** | **$0.84** | — |
+
+- **Within 2 points of mem0 overall, ahead by 10 on open-domain reasoning**, while using far smaller
+  models. Linked memories give the answerer connected context instead of isolated facts.
+- The memory organized itself: 1,435 notes, 5,210 typed links ("part of", "updates", "contradicts"…),
+  79% of notes rewritten as later conversation changed their meaning, 68 life areas created with
+  nothing predefined, and ~20% of small talk skipped.
+- Weakest spot: temporal questions. Relative dates ("last week") aren't yet resolved to absolute
+  dates when a memory is filed. About a third of all misses were the small answer model not finishing
+  its answer format, not memory misses.
+
+<sub>Scope: all 10 LOCOMO conversations, ingested about halfway to keep the run under $1; scored on the
+820 of 1,540 questions whose evidence is in the ingested part, compared against mem0's published
+per-question results on exactly those 820. Different judges can shift scores by a point or two.</sub>
+
 ## Clients
 
 | Client | Stack | |
