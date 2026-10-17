@@ -112,6 +112,63 @@ reply `/approve <id>`.
 - **Terminal only:** `.venv/bin/python main.py` chats in the terminal, no server or notch needed.
 </details>
 
+## Using Eddy
+
+Eddy is an assistant that does the work, not just a chatbot. Ask for an outcome in plain language and
+she picks the tools: browser, Mac apps, your accounts, the scheduler. You can reach her from the notch
+(voice), the web app at <http://localhost:8787>, the terminal (`.venv/bin/python main.py`), or the
+Android app.
+
+**Things to ask**
+
+| You want to… | Say something like |
+|---|---|
+| Research | *"Do proper research on home solar in Pune and give me a sourced summary"* |
+| Get something done on your Mac | *"Open Notes and write a packing list for Goa"* · *"Reply to Arjun on Slack: running 10 min late"* |
+| Work your inbox and calendar | *"What did the bank email me about this week?"* · *"Put a dentist appointment on Friday at 4"* |
+| Be reminded / run things on a schedule | *"Every weekday at 9, check my todos and ask me about them"* · *"Remind me in 20 minutes to call mom"* |
+| Track goals and todos | *"I want to run a half marathon by March"* (becomes a goal with milestones) · *"Add: renew passport"* |
+| Look something up fast | *"What's the weather in Bengaluru?"* · *"Find me the YouTube video of that Karpathy tokenizer talk"* |
+| Use any tool you plug in | Add an MCP server in the **Integrations** tab and just ask for it |
+
+**Memory works on its own.** You never have to say "save this". After each exchange Eddy decides what's
+worth keeping, files it under an area of your life (preferences, work, health…), links it to related
+memories, and updates old ones when something changes. A few things are useful to know:
+
+- *"Remember that I'm vegetarian"* stores something right away.
+- *"What do you remember about my job?"* searches her memory.
+- *"Forget that"* / *"That's wrong, I moved to Delhi"* corrects her.
+- `/facts` shows her core memories (always in mind) and the areas she's filed things under.
+
+**Nothing irreversible happens without you.** Sending an email or WhatsApp message, booking an event,
+submitting a form, or applying to a job waits in a queue. Type `/approve` to see what's pending, then
+`/approve <id>` or `/reject <id>`. On the Mac, anything that sends, posts, buys, or deletes pauses for
+your yes, and taking over the keyboard or mouse stops her.
+
+**Chat commands**
+
+| Command | What it does |
+|---|---|
+| `/approve` · `/approve <id>` · `/reject <id>` | List, approve, or reject pending actions |
+| `/facts` | Core memories and memory areas |
+| `/history <words>` | Exact search over every past conversation |
+| `/new` | Start a fresh conversation (memory carries over) |
+| `/jobs [n]` | Output of recent scheduled jobs |
+| `/working-on` | Projects you've told her you're working on |
+| `/google login` · `/whatsapp login` | Connect Google or WhatsApp |
+| `/voice on\|off` · `/talk` | Spoken replies · push-to-talk (terminal) |
+
+**Plugins.** Extra feature packs you switch on in `.env`. The first is `career`:
+
+1. Set `EDITH_PLUGINS=career`.
+2. Copy `edith/plugins/career/career_profile.example.json` to `~/.edith/career_profile.json` and fill in
+   who you are, your projects, your email voice, and the roles you want. The career tools write only
+   from this file and your resume.
+3. Optional: `EDITH_RESUME_PDF`, plus `HUNTER_API_KEY` / `CRUSTDATA_API_KEY` / `APOLLO_API_KEY` for leads.
+
+Then ask *"Find 10 AI startups hiring backend engineers in Berlin and draft emails to their founders"*,
+or open the **Jobs** and **Content** tabs.
+
 ## What it does
 
 | | |
