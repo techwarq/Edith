@@ -33,6 +33,15 @@ function switchTab(name) {
 
 tabButtons.forEach((btn) => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
 
+fetch("/api/plugins")
+  .then((r) => r.json())
+  .then(({ enabled }) => {
+    document.querySelectorAll(".tab-btn[data-plugin]").forEach((btn) => {
+      btn.hidden = !enabled.includes(btn.dataset.plugin);
+    });
+  })
+  .catch(() => {});
+
 async function apiGet(path, params) {
   const url = new URL(path, window.location.origin);
   url.searchParams.set("token", token);
@@ -981,7 +990,7 @@ function renderContent(panel, authors, posts, weekDays, digest) {
     const btn = document.getElementById("content-generate");
     btn.disabled = true; btn.textContent = "Generating… (~30s)";
     try {
-      await apiPost("/api/linkedin/daily/generate", { author_urn: urn, author_urn_x: "x:TeenCode6", since_days: 7 });
+      await apiPost("/api/linkedin/daily/generate", { author_urn: urn, since_days: 7 });
       loadContent();
     } catch (err) {
       alert("Generate failed: " + err.message);
@@ -994,7 +1003,7 @@ function renderContent(panel, authors, posts, weekDays, digest) {
     if (!urn) { alert("Pick a LinkedIn author first (connect via /api/linkedin/auth/start)."); return; }
     if (!confirm("Generate a fresh 7-day Talo plan? This takes ~5 min and adds 21 drafts.")) return;
     try {
-      await apiPost("/api/linkedin/week/generate", { author_urn: urn, author_urn_x: "x:TeenCode6" });
+      await apiPost("/api/linkedin/week/generate", { author_urn: urn });
       loadContent();
     } catch (err) {
       alert("Week generate failed: " + err.message);
@@ -1902,7 +1911,7 @@ function renderShippingAccountForm(accounts) {
   return `
     ${chips ? `<div style="margin-top:12px;">${chips}</div>` : ""}
     <div class="mon-form">
-      <input id="monitor-account-input" type="text" placeholder="GitHub username (e.g. techwarq)">
+      <input id="monitor-account-input" type="text" placeholder="GitHub username (e.g. octocat)">
       <button class="mon-btn" id="monitor-account-add">Track account</button>
     </div>
   `;

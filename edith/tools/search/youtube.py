@@ -9,9 +9,8 @@ installed YouTube app before investing in a Capacitor plugin + app rebuild.
 import logging
 import re
 
-from google.genai import types
-
 from edith.tools.base import ToolContext, tool
+from edith.tools.search.web_search import grounded_search, search_ctx
 
 logger = logging.getLogger("edith.tools.youtube")
 
@@ -29,12 +28,7 @@ def open_youtube(ctx: ToolContext, query: str) -> str:
         "Respond with only the URL, nothing else."
     )
     try:
-        resp = ctx.genai_client.models.generate_content(
-            model=ctx.genai_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
-        )
-        text = resp.text or ""
+        text = grounded_search(*search_ctx(ctx), prompt)
     except Exception as e:  # noqa: BLE001 — surface as a tool error, don't crash the loop
         logger.exception("open_youtube failed for query=%r", query)
         return f"ERROR: YouTube search failed: {e}"

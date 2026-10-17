@@ -150,3 +150,14 @@ def test_search_swallows_qdrant_errors():
             raise RuntimeError("qdrant is down")
 
     assert qdrant.search(BrokenClient(), FakeLLMClient(), "query") == []
+
+
+def test_make_client_embedded_without_url(tmp_path):
+    client = qdrant.make_qdrant_client("", "", tmp_path / "qdrant")
+    qdrant.ensure_collection(client)
+    assert client.collection_exists(qdrant.QDRANT_COLLECTION)
+    client.close()
+
+
+def test_make_client_none_without_url_or_path():
+    assert qdrant.make_qdrant_client("", "") is None

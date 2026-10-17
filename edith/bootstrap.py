@@ -16,14 +16,11 @@ from edith.integrations.google import docs_sheets as google_docs_sheets
 from edith.integrations.google import drive as google_drive
 from edith.integrations.google import gmail as google_gmail
 from edith.llm.client import make_client
+from edith import plugins
 from edith.memory import conversation
 from edith.memory.brain import Brain
 from edith.memory.storage import qdrant, sqlite
-from edith.tools.growth import hunter as hunter_tool
-from edith.tools.growth import job_applications as job_applications_tool
-from edith.tools.growth import outreach as outreach_tool
 from edith.tools.growth import social as social_tool
-from edith.tools.growth import startup_finder as startup_finder_tool
 from edith.tools.ops import github as github_tool
 from edith.tools.ops import monid as monid_tool
 from edith.tools.ops import monitor as monitor_tool
@@ -90,10 +87,6 @@ TOOL_MODULES = (
     monid_tool,
     goals_tool,
     todos_tool,
-    hunter_tool,
-    job_applications_tool,
-    outreach_tool,
-    startup_finder_tool,
     projects_tool,
     github_tool,
     vercel_tool,
@@ -105,7 +98,7 @@ TOOL_MODULES = (
 class AppContext:
     conn: sqlite3.Connection
     client: openai.OpenAI
-    genai_client: genai.Client
+    genai_client: genai.Client | None
     qdrant_client: QdrantClient | None
     agent: Agent
     registry: ToolRegistry
@@ -131,9 +124,12 @@ def build_registry(
             brain=Brain(conn, client, qdrant_client=qdrant_client),
         )
     )
-    job_applications_tool.seed_job_sources(conn)
     for module in TOOL_MODULES:
         registry.register_module(module)
+    for plugin in plugins.enabled():
+        plugin.setup(conn)
+        for module in plugin.tool_modules():
+            registry.register_module(module)
     mcp_client.register_all(registry, conn)
     return registry
 
@@ -150,8 +146,8 @@ def build_app_context(settings: Settings) -> AppContext:
     google_auth.write_credentials_from_env()
     conn = sqlite.connect(settings.db_path)
     client = make_client(settings.api_key)
-    genai_client = genai.Client(api_key=settings.gemini_api_key)
-    qdrant_client = qdrant.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key)
+    genai_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+    qdrant_client = qdrant.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key, settings.qdrant_path)
     try:
         qdrant.ensure_collection(qdrant_client)
     except Exception:

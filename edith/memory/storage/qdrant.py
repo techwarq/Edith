@@ -8,6 +8,7 @@ errors, so callers never branch on whether vectors are configured.
 
 import logging
 import uuid
+from pathlib import Path
 from typing import Any, Optional, Union
 
 from openai import OpenAI
@@ -21,10 +22,19 @@ logger = logging.getLogger("edith.memory.qdrant")
 PointId = Union[int, str]
 
 
-def make_qdrant_client(url: str, api_key: str) -> Optional[QdrantClient]:
-    if not url or not api_key:
+def make_qdrant_client(url: str, api_key: str = "", path: Optional[Path] = None) -> Optional[QdrantClient]:
+    """A server client for url (api_key optional — a self-hosted Qdrant has none), else
+    embedded on-disk Qdrant at path. None if neither works: embedded mode allows one
+    process per path, so a second process (e.g. the scheduler worker) runs without vectors."""
+    if url:
+        return QdrantClient(url=url, api_key=api_key or None)
+    if path is None:
         return None
-    return QdrantClient(url=url, api_key=api_key)
+    try:
+        return QdrantClient(path=str(path))
+    except Exception:  # noqa: BLE001
+        logger.warning("Embedded Qdrant at %s is unavailable (in use by another process?)", path)
+        return None
 
 
 def ensure_collection(client: Optional[QdrantClient]) -> None:

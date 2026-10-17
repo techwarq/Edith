@@ -3,7 +3,7 @@
 Reuses VERCEL_ANALYTICS_TOKEN/VERCEL_TEAM_ID (already configured for the
 Situation Monitor's Analytics panel — see edith/monitor/vercel_analytics.py)
 rather than a second credential; the same token just needs read scope for
-either use. Deliberately read-only — Sonali chose this scope over adding
+either use. Deliberately read-only — this scope was chosen over adding
 write access (triggering redeploys) when asked, 2026-08-03.
 """
 

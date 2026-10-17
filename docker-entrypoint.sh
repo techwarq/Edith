@@ -9,10 +9,12 @@ if [ -n "$MONID_API_KEY" ]; then
   monid keys add -k "$MONID_API_KEY" -l main >/dev/null 2>&1 || true
 fi
 
-# Worker runs in the background, sharing this container's filesystem (and thus the
-# same SQLite file on the mounted volume) as the web server — device tokens and
-# scheduled-job output only make sense if both processes see the same database.
-# Backgrounded with `&` so a worker crash (e.g. Temporal misconfigured) doesn't
-# take the container down with it; only uvicorn is the tracked main process.
-python -m edith.temporal.worker &
+# Scheduler worker, only when Temporal is configured (TEMPORAL_ADDRESS). Runs in the
+# background sharing this container's filesystem (and thus the same SQLite file on
+# the mounted volume) as the web server — device tokens and scheduled-job output
+# only make sense if both processes see the same database. Backgrounded with `&` so
+# a worker crash doesn't take the container down; only uvicorn is the main process.
+if [ -n "$TEMPORAL_ADDRESS" ]; then
+  python -m edith.temporal.worker &
+fi
 uvicorn edith.server:app --host 0.0.0.0 --port ${PORT:-8000}

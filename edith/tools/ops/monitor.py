@@ -73,7 +73,7 @@ def track_shipping_repo(ctx: ToolContext, repo: str, label: str = "") -> str:
     its recent commits. Call when the user names a repo/project they want to see ship activity for.
 
     Args:
-        repo: 'owner/name', e.g. 'techwarq/edith'
+        repo: 'owner/name', e.g. 'octocat/hello-world'
         label: Optional display name, defaults to the repo path
     """
     system.set_setting(ctx.conn, key=repo, value=label or repo, category=SHIPPING_REPO_CATEGORY)
@@ -101,10 +101,10 @@ def track_shipping_account(ctx: ToolContext, username: str, label: str = "") -> 
     """Track an entire GitHub account/username in the Shipping Log panel — pulls recent public
     commits across ALL of that user's repos automatically, each one tagged with the repo it
     came from. Use this instead of track_shipping_repo when the user wants everything they
-    ship tracked without naming each repo individually (e.g. 'track my GitHub, techwarq').
+    ship tracked without naming each repo individually (e.g. 'track my GitHub, octocat').
 
     Args:
-        username: GitHub username, e.g. 'techwarq'
+        username: GitHub username, e.g. 'octocat'
         label: Optional display name, defaults to the username
     """
     system.set_setting(ctx.conn, key=username, value=label or username, category=SHIPPING_ACCOUNT_CATEGORY)

@@ -1,0 +1,37 @@
+{
+  "name": "Alex Doe",
+  "location": "Berlin",
+  "headline": "Full-stack / AI Engineer",
+  "summary": "Alex Doe, Berlin. Full-stack + AI engineer who builds LLM products end to end. Built Acme Notes (an AI meeting-notes app) and an open-source eval library. Python, TypeScript, Postgres, AWS.",
+  "stack": "Python, TypeScript, React, Node.js, Postgres, AWS, LLM APIs, RAG",
+  "portfolio_url": "alexdoe.dev",
+  "github_repos": ["alexdoe/acme-notes", "alexdoe/evals"],
+
+  "jobs": {
+    "target_roles": "AI Engineer, Backend Engineer, Full-stack Engineer",
+    "preferences": "REMOTE-ONLY — skip on-site/hybrid or location-locked roles unless explicitly remote-worldwide. Prefer 10-50 person, VC-backed startups.",
+    "outreach_hook": "reference their product + one concrete proof point from the resume"
+  },
+
+  "email": {
+    "subject": "engineer who builds {focus} - alex doe",
+    "default_focus": "ai products",
+    "intro": "i build ai products end to end, from evals to the agents users touch.",
+    "projects": {
+      "notes": {"line": "acme notes: ai meeting notes used by 2k teams", "hint": "productivity, meetings, llm apps"},
+      "evals": {"line": "evals: open-source llm eval library (github.com/alexdoe/evals)", "hint": "evals and output quality"}
+    },
+    "default_projects": ["notes", "evals"],
+    "close_sponsor": "open to relocating if you can sponsor a visa. would love to work with you, how can we do it?",
+    "close_remote": "happy to work remotely, full-time or contract. would love to work with you, how can we do it?",
+    "signoff": "best,\nalex doe",
+    "attachment_name": "Alex_Doe_Resume.pdf",
+    "tracked_hosts": ["alexdoe.dev"]
+  },
+
+  "content": {
+    "persona": "You are the daily content planner for Alex Doe — goal: grow an audience for their apps and teach practical AI engineering on LinkedIn and X.",
+    "styles": "launch + ask, belief + metric, lowercase contrarian, honest builder",
+    "campaign": null
+  }
+}

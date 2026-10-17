@@ -3,7 +3,7 @@ endpoints (web/social scraping, enrichment, search) via the `monid` CLI
 (https://monid.ai), installed and authenticated on the host machine
 (`monid keys list` shows the active key; config lives at ~/.config/monid).
 
-Sonali explicitly chose fully-autonomous execution — including paid
+Fully-autonomous execution was chosen deliberately — including paid
 endpoints — over gating runs through the pending_actions/approve flow that
 send_email/create_calendar_event use. Cost exposure here is bounded by
 Monid's own workspace budget/run-cap controls (app.monid.ai), not by an

@@ -16,11 +16,11 @@ def remember(ctx: ToolContext, content: str, region: str = "") -> str:
     memories. Write content as a clear standalone statement about the user.
 
     Args:
-        content: What to remember, e.g. 'Sonali prefers calls after 4pm'
+        content: What to remember, e.g. 'Prefers calls after 4pm'
         region: Optional region to file it under (e.g. 'content strategy'); leave empty to let the brain decide
     """
     if not ctx.brain or not ctx.brain.can_think:
-        return "Memory isn't configured (needs a Gemini key)."
+        return "Memory isn't configured (needs OPENROUTER_API_KEY)."
     note = ctx.brain.remember(content, source="explicit", region=region or None)
     if note is None:
         return "Not stored — the brain judged there was nothing lasting in that."

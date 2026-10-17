@@ -80,11 +80,12 @@ class Agent:
                 )
                 self._persist_new_messages(session_id, new_messages)
                 recorder.finish(final_text)
-                self.brain.remember_later(
-                    f"User: {user_text}\nEddy: {final_text}",
-                    session_id=session_id,
-                    refs=_touched_records(new_messages),
-                )
+                if not _called(new_messages, "remember"):
+                    self.brain.remember_later(
+                        f"User: {user_text}\nEddy: {final_text}",
+                        session_id=session_id,
+                        refs=_touched_records(new_messages),
+                    )
                 return final_text
             except ContextLengthExceeded:
                 if attempt == 0:
@@ -152,3 +153,11 @@ def _touched_records(new_messages: list[dict]) -> list[tuple[str, int]]:
                 if isinstance(args, dict) and isinstance(args.get(arg), int) and args[arg] > 0:
                     refs.append((kind, args[arg]))
     return list(dict.fromkeys(refs))
+
+
+def _called(new_messages: list[dict], tool_name: str) -> bool:
+    return any(
+        call.get("function", {}).get("name") == tool_name
+        for msg in new_messages
+        for call in msg.get("tool_calls") or []
+    )

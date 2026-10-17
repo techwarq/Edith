@@ -1,0 +1,46 @@
+# Eddy on your own machine or server.
+#
+#   cp .env.example .env        # add OPENROUTER_API_KEY (the only required key)
+#   docker compose up -d        # eddy + qdrant
+#   docker compose --profile scheduler up -d   # ...plus a local Temporal for reminders/scheduled jobs
+#
+# Bring your own instead: set QDRANT_URL (+ QDRANT_API_KEY) or TEMPORAL_ADDRESS
+# (+ TEMPORAL_NAMESPACE / TEMPORAL_API_KEY for Temporal Cloud) in .env and Eddy
+# connects to those rather than the containers below.
+
+services:
+  eddy:
+    build: .
+    env_file: .env
+    environment:
+      EDITH_HOME: /data
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-}
+    ports:
+      - "${EDDY_PORT:-8787}:8000"
+    volumes:
+      - eddy_data:/data
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.0
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/temporal:1.9.1
+    profiles: ["scheduler"]
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db"]
+    ports:
+      - "8233:8233"   # Temporal web UI
+    volumes:
+      - temporal_data:/data
+    restart: unless-stopped
+
+volumes:
+  eddy_data:
+  qdrant_data:
+  temporal_data:

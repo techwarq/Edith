@@ -9,7 +9,7 @@ through estimate_llm_cost()/estimate_stt_cost()/estimate_tts_cost() below.
 """
 
 # USD per 1M tokens, (input_rate, output_rate). qwen3-coder-next's rate is the
-# real one Sonali quoted when picking it (see edith-project-overview memory);
+# real one quoted when it was picked;
 # gemini-3.5-flash is an estimate in the same ballpark as other Gemini Flash
 # tiers — verify against https://ai.google.dev/pricing before trusting exact
 # dollar figures, but it's fine for relative/trend tracking either way.

@@ -370,7 +370,7 @@ def decide(
     if decision is None:
         return Outcome(None, note=f"no confident target for '{o}'", source=source, raw=raw)
     if consequential and not authorized:
-        return Outcome(Choice(decision, consequential=True, reason="needs Sonali's confirmation"),
+        return Outcome(Choice(decision, consequential=True, reason="needs the user's confirmation"),
                        note="consequential, not authorized", source=source, raw=raw)
     return Outcome(Choice(decision, consequential=consequential), note=f"Jev: {o}", source=source, raw=raw)
 

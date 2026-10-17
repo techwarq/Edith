@@ -8,7 +8,7 @@ import asyncio
 import pytest
 from temporalio.service import RPCError, RPCStatusCode
 
-from edith.config import JOB_SEARCH_SCHEDULE_ID, NIGHTLY_REFLECTION_SCHEDULE_ID
+from edith.config import NIGHTLY_REFLECTION_SCHEDULE_ID
 from edith.temporal import schedules
 
 
@@ -172,26 +172,19 @@ def test_start_deep_research_ids_are_unique_per_call():
     assert all(i.startswith(schedules.DEEP_RESEARCH_WORKFLOW_PREFIX) for i in client.started_workflows)
 
 
-def test_ensure_job_search_schedule_creates_once():
+def test_ensure_instruction_schedule_creates_once():
     client = FakeClient()
-    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
-    assert JOB_SEARCH_SCHEDULE_ID in client.created_schedules
+    asyncio.run(schedules.ensure_instruction_schedule(client, "plugin-run", "do the thing", "30 4-13 * * 1-5"))
+    assert "plugin-run" in client.created_schedules
 
-    existing = client.created_schedules[JOB_SEARCH_SCHEDULE_ID]
-    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
-    assert client.created_schedules[JOB_SEARCH_SCHEDULE_ID] is existing
+    existing = client.created_schedules["plugin-run"]
+    asyncio.run(schedules.ensure_instruction_schedule(client, "plugin-run", "do the thing", "30 4-13 * * 1-5"))
+    assert client.created_schedules["plugin-run"] is existing
 
 
-def test_cancel_job_search_schedule_when_not_enabled():
+def test_cancel_schedule_round_trip():
     client = FakeClient()
-    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is False
-
-
-def test_enable_then_disable_job_search_schedule():
-    client = FakeClient()
-    asyncio.run(schedules.ensure_job_search_schedule(client, "30 4-13 * * 1-5", 3))
-    assert JOB_SEARCH_SCHEDULE_ID in client.created_schedules
-
-    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is True
-    assert JOB_SEARCH_SCHEDULE_ID not in client.created_schedules
-    assert asyncio.run(schedules.cancel_job_search_schedule(client)) is False
+    assert asyncio.run(schedules.cancel_schedule(client, "plugin-run")) is False
+    asyncio.run(schedules.ensure_instruction_schedule(client, "plugin-run", "do the thing", "0 9 * * *"))
+    assert asyncio.run(schedules.cancel_schedule(client, "plugin-run")) is True
+    assert "plugin-run" not in client.created_schedules

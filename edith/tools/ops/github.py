@@ -3,7 +3,7 @@
 Reuses GITHUB_TOKEN (already configured for the Situation Monitor's Shipping
 Log panel — see edith/monitor/github_shipping.py) rather than a second
 credential; public repos work with no token, private repos need one with
-repo read access. Deliberately read-only — Sonali chose this scope over
+repo read access. Deliberately read-only — this scope was chosen over
 adding write access (creating issues/comments) when asked, 2026-08-03.
 """
 
@@ -44,7 +44,7 @@ def github_repo_info(ctx: ToolContext, repo: str) -> str:
     """Get basic info about a GitHub repo: description, language, stars, open issue count, default branch.
 
     Args:
-        repo: 'owner/name', e.g. 'techwarq/edith'
+        repo: 'owner/name', e.g. 'octocat/hello-world'
     """
     data, err = _get(ctx.settings, f"/repos/{repo}")
     if err:

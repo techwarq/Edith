@@ -5,15 +5,15 @@ but prompted specifically for recency and a spoken-friendly headline format
 
 import logging
 
-from google import genai
-from google.genai import types
+from typing import Any
 
 from edith.tools.base import ToolContext, tool
+from edith.tools.search.web_search import grounded_search, search_ctx
 
 logger = logging.getLogger("edith.tools.news")
 
 
-def fetch_news(client: genai.Client, model: str, topic: str = "") -> str:
+def fetch_news(genai_client: Any, genai_model: str, llm_client: Any, llm_model: str, topic: str = "") -> str:
     """Standalone so the Situation Monitor dashboard's Live News panel
     (edith/monitor/api.py) can call the same grounded-search logic without
     going through the tool registry — this is the one function both call."""
@@ -24,12 +24,7 @@ def fetch_news(client: genai.Client, model: str, topic: str = "") -> str:
         "headline followed by a one-sentence summary. Include rough dates where relevant."
     )
     try:
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
-        )
-        return resp.text or "No recent news found."
+        return grounded_search(genai_client, genai_model, llm_client, llm_model, prompt) or "No recent news found."
     except Exception as e:  # noqa: BLE001 — surface as a tool error, don't crash the loop
         logger.exception("get_news failed for topic=%r", topic)
         return f"ERROR: news fetch failed: {e}"
@@ -45,4 +40,4 @@ def get_news(ctx: ToolContext, topic: str = "") -> str:
     Args:
         topic: Optional topic to scope the news to
     """
-    return fetch_news(ctx.genai_client, ctx.genai_model, topic)
+    return fetch_news(*search_ctx(ctx), topic)

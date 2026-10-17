@@ -16,7 +16,7 @@ BRAVE_APP_NAME = "Brave Browser"
 
 @tool
 def open_in_browser(url: str) -> str:
-    """Open a specific, already-known URL in Brave on Sonali's Mac (e.g. a YouTube video link
+    """Open a specific, already-known URL in Brave on the user's Mac (e.g. a YouTube video link
     resolved by open_youtube). Use this instead of computer_use whenever you already have
     the exact URL — it's instant and doesn't need any on-page interaction.
 
@@ -29,7 +29,7 @@ def open_in_browser(url: str) -> str:
     try:
         subprocess.run(["open", "-a", BRAVE_APP_NAME, url], check=True, timeout=10)
     except FileNotFoundError:
-        return "ERROR: the macOS `open` command isn't available — this only works on Sonali's Mac."
+        return "ERROR: the macOS `open` command isn't available — this only works on the user's Mac."
     except subprocess.CalledProcessError as e:
         return f"ERROR: couldn't open Brave: {e}"
     return f"Opened {url} in Brave."
@@ -56,24 +56,24 @@ def operate_mac(
     on_progress: Optional[Callable[[str], None]] = None,
 ) -> str:
     """THE tool for anything in a named Mac app (TextEdit, Notes, Brave, Calculator, Finder…).
-    Actually DO something on Sonali's Mac by looking at the screen and clicking/typing like a
+    Actually DO something on the user's Mac by looking at the screen and clicking/typing like a
     person: any app, any website, any setting (e.g. "reply 'on my way' to the last WhatsApp
     message from Mansfield", "turn on Do Not Disturb", "open my Downloads folder and find
     the newest PDF", "make a new note in Notes saying ..."). Takes screenshots each step
     (saved to ~/.edith/screenshots). Pass the goal in full. Every piece of text to type or fill
     must be given literally: either in double quotes inside the goal or in `texts` — the step
     decider can only CHOOSE from those, never write. For forms (job/YC applications etc.), first
-    draft every answer, show Sonali, get her OK, then call this with all answers in `texts` and
+    draft every answer, show the user, get their OK, then call this with all answers in `texts` and
     a goal like 'fill the application form fields with the provided answers; don't submit'.
     Websites to open go in `urls` (or literally in the goal).
-    If the result starts with NEEDS_CONFIRMATION, tell Sonali exactly what's about to happen and
-    ask — only after she clearly says yes, call again with the same goal and allow_risky=true.
-    If it starts with NEEDS_INPUT, ask her the question. Prefer open_in_browser when you just
+    If the result starts with NEEDS_CONFIRMATION, tell the user exactly what's about to happen and
+    ask — only after they clearly say yes, call again with the same goal and allow_risky=true.
+    If it starts with NEEDS_INPUT, ask them the question. Prefer open_in_browser when you just
     need to open a known URL.
 
     Args:
         goal: What to accomplish, in full.
-        allow_risky: Only true after Sonali explicitly confirmed the specific send/delete/buy/post
+        allow_risky: Only true after the user explicitly confirmed the specific send/delete/buy/post
             step this goal needs. Default false.
         texts: Exact text values available to type/fill, e.g. approved form answers.
         urls: Exact web addresses the task may open.
@@ -97,7 +97,7 @@ def operate_mac(
 
 @tool
 def look_at_screen(ctx: ToolContext, question: str) -> str:
-    """Take a screenshot of Sonali's Mac screen and answer a question about it — "what's this
+    """Take a screenshot of the user's Mac screen and answer a question about it — "what's this
     error?", "summarize this page", "what am I looking at?". Read-only; doesn't click
     anything. The screenshot is saved to ~/.edith/screenshots.
 

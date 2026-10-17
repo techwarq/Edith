@@ -12,27 +12,24 @@ else in prompts.py.
 import json
 import logging
 
-from google import genai
-from google.genai import types
+from typing import Any
 
 from edith.memory.storage import qdrant
 from edith.tools.base import ToolContext, tool
+from edith.tools.search.web_search import grounded_search, plain_completion, search_ctx
 
 logger = logging.getLogger("edith.tools.research")
 
 MAX_SUBQUESTIONS = 4
 
 
-def _decompose(client: genai.Client, model: str, query: str) -> list[str]:
-    resp = client.models.generate_content(
-        model=model,
-        contents=(
-            f"Break this research question into at most {MAX_SUBQUESTIONS} focused "
-            "sub-questions that together cover it well. Reply with ONLY a JSON array "
-            f"of strings, no other text.\n\nQuestion: {query}"
-        ),
-    )
-    text = (resp.text or "").strip().strip("`")
+def _decompose(llm: tuple[Any, str, Any, str], query: str) -> list[str]:
+    text = plain_completion(
+        *llm,
+        f"Break this research question into at most {MAX_SUBQUESTIONS} focused "
+        "sub-questions that together cover it well. Reply with ONLY a JSON array "
+        f"of strings, no other text.\n\nQuestion: {query}",
+    ).strip().strip("`")
     if text.lower().startswith("json"):
         text = text[4:].strip()
     try:
@@ -43,20 +40,15 @@ def _decompose(client: genai.Client, model: str, query: str) -> list[str]:
     return subquestions[:MAX_SUBQUESTIONS] or [query]
 
 
-def _grounded_answer(client: genai.Client, model: str, question: str) -> str:
+def _grounded_answer(llm: tuple[Any, str, Any, str], question: str) -> str:
     try:
-        resp = client.models.generate_content(
-            model=model,
-            contents=f"Search the web and answer concisely, with sources: {question}",
-            config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
-        )
-        return resp.text or "(no results)"
+        return grounded_search(*llm, f"Search the web and answer concisely, with sources: {question}") or "(no results)"
     except Exception as e:  # noqa: BLE001 — one failed sub-question shouldn't sink the whole report
         logger.exception("deep_research sub-question failed for %r", question)
         return f"(search failed: {e})"
 
 
-def _synthesize(client: genai.Client, model: str, query: str, findings: list[tuple[str, str]]) -> str:
+def _synthesize(llm: tuple[Any, str, Any, str], query: str, findings: list[tuple[str, str]]) -> str:
     findings_text = "\n\n".join(f"Sub-question: {q}\nFindings: {a}" for q, a in findings)
     prompt = (
         f"You gathered the following research findings for this question:\n{query}\n\n"
@@ -66,8 +58,7 @@ def _synthesize(client: genai.Client, model: str, query: str, findings: list[tup
         "unconfirmed, or a search failed, say so explicitly rather than filling the gap "
         "yourself. End with a short Sources list drawn from the findings."
     )
-    resp = client.models.generate_content(model=model, contents=prompt)
-    return resp.text or "Could not synthesize a research report from the gathered findings."
+    return plain_completion(*llm, prompt) or "Could not synthesize a research report from the gathered findings."
 
 
 @tool
@@ -81,8 +72,8 @@ def deep_research(ctx: ToolContext, query: str) -> str:
     Args:
         query: The research question.
     """
-    client, model = ctx.genai_client, ctx.genai_model
+    llm = search_ctx(ctx)
     qdrant.upsert(ctx.qdrant_client, ctx.llm_client, "search_query", query)
-    subquestions = _decompose(client, model, query)
-    findings = [(q, _grounded_answer(client, model, q)) for q in subquestions]
-    return _synthesize(client, model, query, findings)
+    subquestions = _decompose(llm, query)
+    findings = [(q, _grounded_answer(llm, q)) for q in subquestions]
+    return _synthesize(llm, query, findings)

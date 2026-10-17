@@ -258,6 +258,6 @@ def test_resolve_idea_bug_not_found(tmp_path):
 
 def test_news(tmp_path, monkeypatch):
     client, _ = _client(tmp_path)
-    monkeypatch.setattr(monitor_api, "fetch_news", lambda client, model, topic: f"headline about {topic or 'general'}")
+    monkeypatch.setattr(monitor_api, "fetch_news", lambda client, model, llm, llm_model, topic: f"headline about {topic or 'general'}")
     resp = client.get("/api/monitor/news", params={"token": TOKEN, "topic": "startups"})
     assert resp.json() == {"text": "headline about startups"}

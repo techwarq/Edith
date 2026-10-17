@@ -38,8 +38,8 @@ def _get_agent() -> tuple[Agent, str]:
         _settings = load_settings()
         _conn = sqlite.connect(_settings.db_path)
         _client = make_client(_settings.api_key)  # OpenRouter — Agent's tool-calling loop
-        genai_client = genai.Client(api_key=_settings.gemini_api_key)  # Gemini native SDK — web_search grounding, embeddings
-        qdrant_client = qdrant.make_qdrant_client(_settings.qdrant_url, _settings.qdrant_api_key)
+        genai_client = genai.Client(api_key=_settings.gemini_api_key) if _settings.gemini_api_key else None
+        qdrant_client = qdrant.make_qdrant_client(_settings.qdrant_url, _settings.qdrant_api_key, _settings.qdrant_path)
         qdrant.ensure_collection(qdrant_client)
         registry = build_registry(_conn, _client, genai_client, _settings.gemini_grounding_model, qdrant_client, _settings)
         _agent = Agent(_conn, _client, _settings.model, registry, registry.ctx.brain)

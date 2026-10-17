@@ -1,6 +1,7 @@
 import pytest
 
-from edith.memory.records import career, planning, system
+from edith.memory.records import planning, system
+from edith.plugins.career import store as career
 from edith.memory.storage import sqlite
 
 

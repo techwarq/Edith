@@ -11,15 +11,15 @@
 //
 // The full dashboard window is unchanged: a BrowserWindow pointed at the real
 // backend, same as a browser tab. Server URL is overridable without a rebuild
-// via ~/.edith/desktop_config.json ("serverUrl" key), falling back to the same
-// Railway URL the Android app uses.
+// via ~/.edith/desktop_config.json ("serverUrl" key), falling back to a local
+// backend on 127.0.0.1:8787 (uvicorn or docker compose).
 
 const { app, BrowserWindow, ipcMain, session, globalShortcut, screen } = require("electron");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const DEFAULT_SERVER_URL = "https://edith-production-d100.up.railway.app";
+const DEFAULT_SERVER_URL = "http://127.0.0.1:8787";
 const CONFIG_PATH = path.join(os.homedir(), ".edith", "desktop_config.json");
 const ICON_PATH = path.join(__dirname, "build", "icon.icns");
 

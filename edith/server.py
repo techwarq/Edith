@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 
 from edith.integrations import voice
+from edith import plugins
 from edith.bootstrap import build_app_context, resolve_session
 from edith.commands import handle_command
 from edith.config import WHATSAPP_QR_PATH, load_settings
@@ -19,8 +20,6 @@ from edith.memory import conversation
 from edith.memory.records import planning, system
 from edith.memory.storage import sqlite
 from edith.goals import api as goals_api
-from edith.job_applications import api as job_applications_api
-from edith.startup_finder import api as startup_finder_api
 from edith.mcp import api as mcp_api
 from edith.monitor import api as monitor_api
 from edith.observability import api as observability_api
@@ -28,7 +27,6 @@ from edith.observability.seed_evals import seed_default_evals
 from edith.temporal import api as deep_research_api
 from edith.todos import api as todos_api
 from edith.integrations.voice import VoiceError
-from edith.integrations.linkedin import api as linkedin_api
 from edith.computer_use import operator
 from edith.computer_use.typesafe_client import TypeSafeClient, TypeSafeError
 from edith.computer_use.voice_loop import SITES, VoiceTickSession
@@ -55,10 +53,10 @@ app.include_router(goals_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(todos_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(mcp_api.build_router(ctx.conn, API_TOKEN))
 app.include_router(deep_research_api.build_router(ctx.conn, settings, API_TOKEN))
-app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
-app.include_router(job_applications_api.build_router(ctx.conn, API_TOKEN))
-app.include_router(startup_finder_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN))
-app.include_router(linkedin_api.build_router(ctx.conn, ctx.genai_client, API_TOKEN))
+app.include_router(monitor_api.build_router(ctx.conn, settings, ctx.genai_client, API_TOKEN, ctx.client))
+for plugin in plugins.enabled():
+    for router in plugin.routers(ctx.conn, settings, ctx.genai_client, API_TOKEN):
+        app.include_router(router)
 
 
 @app.middleware("http")
@@ -72,6 +70,11 @@ async def no_cache_web_assets(request: Request, call_next):
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/plugins")
+async def enabled_plugins() -> dict:
+    return {"enabled": plugins.enabled_names()}
 
 
 @app.get("/whatsapp-qr", response_model=None)

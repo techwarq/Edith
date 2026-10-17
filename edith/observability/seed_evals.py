@@ -2,7 +2,7 @@
 most likely to silently regress: remembering what it's told, picking the
 right tool instead of guessing/hallucinating, and not overstepping on
 irreversible actions. Seeded idempotently (add_eval_case upserts by name) —
-safe to call on every startup, and Sonali can add more cases straight into
+safe to call on every startup, and you can add more cases straight into
 the eval_cases table without touching this file.
 """
 

@@ -56,7 +56,18 @@ Never invent facts; only reframe what the memories say. Omit neighbors that shou
 {{"links": [{{"id": 0, "relation": "..."}}], "tags": [...], "neighbor_updates": [{{"id": 0, "context": "...", "tags": [...], "keywords": [...]}}]}}"""
 
 
-def _json(client: Any, model: str, prompt: str) -> dict[str, Any]:
+def _json(client: Any, model: str, prompt: str, attempts: int = 2) -> dict[str, Any]:
+    """One retry on malformed JSON — small models occasionally emit a broken object."""
+    for attempt in range(attempts):
+        try:
+            return _json_once(client, model, prompt)
+        except json.JSONDecodeError:
+            if attempt == attempts - 1:
+                raise
+    return {}
+
+
+def _json_once(client: Any, model: str, prompt: str) -> dict[str, Any]:
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],

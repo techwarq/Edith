@@ -1,7 +1,7 @@
 import Foundation
 
 enum Config {
-    static let defaultServerURL = "https://edith-production-d100.up.railway.app"
+    static let defaultServerURL = "http://127.0.0.1:8787"
 
     private static let configPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".edith/desktop_config.json")

@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+from edith import plugins
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     id            TEXT PRIMARY KEY,
@@ -296,115 +298,6 @@ CREATE INDEX IF NOT EXISTS idx_investigation_edges_investigation ON investigatio
 CREATE INDEX IF NOT EXISTS idx_investigation_edges_node_a ON investigation_edges(node_a_id);
 CREATE INDEX IF NOT EXISTS idx_investigation_edges_node_b ON investigation_edges(node_b_id);
 
--- Autonomous job-search/apply pipeline. "job" here means job listing/application,
--- NOT a scheduled Temporal job (see edith/tools/system/scheduling.py's schedule_job/list_jobs) —
--- kept as job_applications, never a bare "jobs" table/tool name, to avoid confusion
--- and tool-registry name collisions with the existing scheduling tools.
-CREATE TABLE IF NOT EXISTS job_applications (
-    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
-    company                   TEXT NOT NULL,
-    company_domain            TEXT,
-    role_title                TEXT,
-    source                    TEXT,
-    source_url                TEXT,
-    job_posting_url           TEXT,
-    channel                   TEXT NOT NULL DEFAULT 'undetermined'
-                                   CHECK(channel IN ('email','web_form','undetermined')),
-    contact_name              TEXT,
-    contact_email             TEXT,
-    contact_email_confidence  REAL,
-    status                    TEXT NOT NULL DEFAULT 'discovered' CHECK(status IN (
-                                   'discovered','drafted','queued_for_approval',
-                                   'sent','applied','failed','skipped_duplicate'
-                               )),
-    draft_subject             TEXT,
-    draft_body                TEXT,
-    resume_summary            TEXT,
-    pending_action_id         INTEGER REFERENCES pending_actions(id),
-    error                     TEXT,
-    sent_at                   TEXT,
-    created_at                TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at                TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX IF NOT EXISTS idx_job_applications_domain ON job_applications(company_domain);
-CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status, created_at);
-
--- Parsed resume + writing-style-sample text, kept out of the brain deliberately:
--- this much text has no business being recalled into unrelated turns. Loaded explicitly, only by the job-application drafting tool. Single row
--- (id fixed at 1), populated once by scripts/ingest_resume.py, upsert-only after that.
-CREATE TABLE IF NOT EXISTS resume_profile (
-    id                 INTEGER PRIMARY KEY CHECK (id = 1),
-    full_text          TEXT NOT NULL,
-    source_file        TEXT,
-    style_sample_text  TEXT,
-    style_sample_file  TEXT,
-    ingested_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-
--- Semi-auto founder/hiring-manager outreach (LinkedIn DMs + cold email).
--- Separate from job_applications (company/role) — one row per *person*.
--- LinkedIn DMs are never auto-sent: Edith drafts, user sends from own LinkedIn.
-CREATE TABLE IF NOT EXISTS outreach_prospects (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                 TEXT NOT NULL,
-    linkedin_url         TEXT,
-    company              TEXT,
-    company_domain       TEXT,
-    role                 TEXT,
-    contact_email        TEXT,
-    context              TEXT,
-    dm_draft             TEXT,
-    email_draft_subject  TEXT,
-    email_draft_body     TEXT,
-    status               TEXT NOT NULL DEFAULT 'queued' CHECK(status IN (
-                             'queued','contacted','replied','skipped'
-                         )),
-    created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach_prospects(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_outreach_domain ON outreach_prospects(company_domain);
-
-CREATE TABLE IF NOT EXISTS startup_leads (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    dedup_key         TEXT NOT NULL UNIQUE,
-    kind              TEXT NOT NULL CHECK(kind IN ('role','founder')),
-    company           TEXT NOT NULL,
-    domain            TEXT,
-    fund              TEXT,
-    source            TEXT,
-    role_title        TEXT,
-    job_url           TEXT,
-    company_url       TEXT,
-    locations         TEXT,
-    region            TEXT,
-    eligibility       TEXT,
-    salary            TEXT,
-    team_size         INTEGER,
-    stage             TEXT,
-    description       TEXT,
-    founders          TEXT,
-    contact_email     TEXT,
-    score             REAL NOT NULL DEFAULT 0,
-    reasons           TEXT,
-    pitch             TEXT,
-    company_info      TEXT,
-    draft_to          TEXT,
-    draft_subject     TEXT,
-    draft_body        TEXT,
-    sent_at           TEXT,
-    sent_to           TEXT,
-    status            TEXT NOT NULL DEFAULT 'new' CHECK(status IN (
-                          'new','delivered','contacted','applied','interview','rejected','skipped'
-                      )),
-    posted_at         TEXT,
-    found_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    delivered_at      TEXT,
-    updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX IF NOT EXISTS idx_startup_leads_status ON startup_leads(status, score DESC);
-CREATE INDEX IF NOT EXISTS idx_startup_leads_domain ON startup_leads(domain);
-
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content,
     content='messages',
@@ -437,22 +330,6 @@ class DatabaseError(RuntimeError):
     pass
 
 
-def _ensure_linkedin_schema(conn: sqlite3.Connection) -> None:
-    try:
-        from edith.integrations.linkedin.store import LINKEDIN_SCHEMA
-
-        conn.executescript(LINKEDIN_SCHEMA)
-    except Exception:
-        # linkedin module optional — don't break core DB if import fails
-        pass
-
-
-def _ensure_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
-    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
-    if column not in cols:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-
-
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # check_same_thread=False: server.py dispatches blocking DB calls via asyncio.to_thread(),
@@ -469,9 +346,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
     _check_fts5_support(conn)
     conn.executescript(SCHEMA)
-    for col in ("company_info", "draft_to", "draft_subject", "draft_body", "sent_at", "sent_to", "visa", "visa_why"):
-        _ensure_column(conn, "startup_leads", col, "TEXT")
-    _ensure_linkedin_schema(conn)
+    plugins.ensure_schemas(conn)
     _migrate_legacy_memory(conn, db_path)
     _check_integrity(conn)
 

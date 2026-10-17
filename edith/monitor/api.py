@@ -11,7 +11,7 @@ other router in the project.
 
 import asyncio
 import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -26,7 +26,9 @@ from edith.tools.search.news import fetch_news
 from edith.tools.growth.social import CONTENT_STRATEGY_REGION, SOCIAL_SKILL_CATEGORY
 
 
-def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: genai.Client, api_token: str) -> APIRouter:
+def build_router(
+    conn: sqlite3.Connection, settings: Settings, genai_client: Optional[genai.Client], api_token: str, llm_client: Any = None
+) -> APIRouter:
     router = APIRouter(prefix="/api/monitor", tags=["monitor"])
 
     def _check_token(token: str) -> Optional[JSONResponse]:
@@ -177,7 +179,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
     async def news(token: str = "", topic: str = "") -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        text = await asyncio.to_thread(fetch_news, genai_client, settings.gemini_grounding_model, topic)
+        text = await asyncio.to_thread(fetch_news, genai_client, settings.gemini_grounding_model, llm_client, settings.model, topic)
         return JSONResponse({"text": text})
 
     def _social_summary() -> dict:

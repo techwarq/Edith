@@ -171,6 +171,21 @@ def test_evolution_links_with_relation_and_retires_superseded_core(brain, llm):
     assert [n["id"] for n in brain.core()] == [new["id"]]
 
 
+def test_malformed_json_is_retried_once(brain, llm):
+    calls = {"n": 0}
+    real_create = llm.chat.create
+
+    def flaky(model, messages, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _Obj(choices=[_Obj(message=_Obj(content='{"region": "health", "core":'))])
+        return real_create(model, messages, **kwargs)
+
+    llm.chat.create = flaky
+    assert brain.remember("I run 5k three times a week") is not None
+    assert calls["n"] == 2
+
+
 def test_evolution_failure_keeps_the_note(brain, llm):
     brain.remember("one")
     llm.evolve = lambda p: RuntimeError("model down")

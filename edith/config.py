@@ -51,8 +51,11 @@ BROWSERBASE_API_KEY = os.environ.get("BROWSERBASE_API_KEY", "").strip()
 BROWSERBASE_PROJECT_ID = os.environ.get("BROWSERBASE_PROJECT_ID", "").strip()
 BROWSERBASE_CONTEXT_PATH = EDITH_HOME / "browserbase_context_id"
 
+# Vectors: a Qdrant server when QDRANT_URL is set (docker compose sets it), otherwise an
+# embedded on-disk Qdrant under EDITH_HOME — no server needed for a local install.
 QDRANT_URL = os.environ.get("QDRANT_URL", "").strip()
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
+QDRANT_PATH = Path(os.environ.get("QDRANT_PATH", EDITH_HOME / "qdrant"))
 QDRANT_COLLECTION = "eddy_memory"
 MEMORY_MODEL = os.environ.get("EDITH_MEMORY_MODEL", "qwen/qwen3.7-flash").strip()
 MEMORY_EMBEDDING_MODEL = "perplexity/pplx-embed-v1-0.6b"  # via OpenRouter, $0.004/M tokens, 32k context
@@ -158,6 +161,7 @@ class Settings:
     prospeo_api_key: str = ""
     startup_finder_model: str = DEFAULT_STARTUP_FINDER_MODEL
     startup_finder_fallback_model: str = DEFAULT_STARTUP_FINDER_FALLBACK_MODEL
+    qdrant_path: Path = QDRANT_PATH
 
 
 def load_settings() -> Settings:
@@ -172,14 +176,8 @@ def load_settings() -> Settings:
         )
         sys.exit(1)
 
+    # Optional: only upgrades web search to Google grounding; OpenRouter covers everything otherwise.
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not gemini_api_key:
-        print(
-            "Error: GEMINI_API_KEY is not set. "
-            "Get one at aistudio.google.com/apikey and add it to .env.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
     model = os.environ.get("EDITH_MODEL", DEFAULT_MODEL).strip()
 
