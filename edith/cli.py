@@ -16,7 +16,8 @@ from edith.integrations import voice
 from edith.bootstrap import WELCOME, build_app_context, resolve_session
 from edith.commands import handle_command
 from edith.config import Settings, load_settings
-from edith.memory import db, store
+from edith.memory import conversation
+from edith.memory.storage import sqlite
 from edith.integrations.voice import VoiceError
 
 
@@ -44,7 +45,7 @@ def main() -> None:
 
     try:
         ctx = build_app_context(settings)
-    except db.DatabaseError as e:
+    except sqlite.DatabaseError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -100,7 +101,7 @@ def main() -> None:
         if voice_enabled:
             _speak_safely(client, reply, settings)
 
-    store.end_session(conn, session_id)
+    conversation.end_session(conn, session_id)
     conn.close()
 
 

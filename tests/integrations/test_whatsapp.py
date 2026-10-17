@@ -7,25 +7,27 @@ verification section for why they can't be driven from a sandboxed shell.
 import pytest
 
 from edith.integrations import whatsapp
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
 def test_send_whatsapp_message_propose_queues_pending_action(conn):
-    registry = ToolRegistry()
-    whatsapp.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(whatsapp)
 
     result = registry.dispatch("send_whatsapp_message", {"chat_name": "Mom", "message": "hi there"})
 
     assert "Queued as action #" in result
-    pending = store.get_pending_actions(conn)
+    pending = system.get_pending_actions(conn)
     assert len(pending) == 1
     assert pending[0]["tool_name"] == "send_whatsapp_message"
     assert pending[0]["args"] == {"chat_name": "Mom", "message": "hi there"}

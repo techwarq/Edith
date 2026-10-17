@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from edith.memory import db
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career
+from edith.memory.storage import sqlite
 from edith.startup_finder import api, email_draft
 
 LEAD = {
@@ -56,9 +56,9 @@ def test_to_html_links_known_urls_only():
 
 
 def _client(tmp_path, monkeypatch, resume):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     conn.execute("INSERT INTO startup_leads (dedup_key, kind, company, domain) VALUES ('co:visoid.com', 'founder', 'Visoid', 'visoid.com')")
-    leads_store.save_draft(conn, 1, "dennis@visoid.com", "subj", "hello dennis,\n\nportfolio: techwarq.space")
+    career.save_lead_draft(conn, 1, "dennis@visoid.com", "subj", "hello dennis,\n\nportfolio: techwarq.space")
     sent = []
     monkeypatch.setattr(api.google_auth, "get_credentials", lambda: object())
     monkeypatch.setattr(api.gmail, "send_rich_email", lambda creds, to, subject, text, html, att, name: sent.append((to, subject, text, html, att, name)) or f"Email sent to {to}.")
@@ -110,7 +110,7 @@ def test_send_to_several_people_personalizes_each_and_skips_already_sent(tmp_pat
     resume = tmp_path / "cv.pdf"
     resume.write_bytes(b"%PDF-1.4")
     client, conn, sent = _client(tmp_path, monkeypatch, resume)
-    leads_store.mark_delivered(conn, 1, founders=[
+    career.mark_lead_delivered(conn, 1, founders=[
         {"name": "Dennis Berg", "email": "dennis@visoid.com"}, {"name": "Kari Holm", "email": "kari@visoid.com"},
         {"name": "Ola Nord", "email": "ola@visoid.com"},
     ])
@@ -145,7 +145,7 @@ def test_send_tags_each_recipient(tmp_path, monkeypatch):
     resume = tmp_path / "cv.pdf"
     resume.write_bytes(b"%PDF-1.4")
     client, conn, sent = _client(tmp_path, monkeypatch, resume)
-    leads_store.mark_delivered(conn, 1, founders=[{"name": "Dennis Berg", "email": "dennis@visoid.com"}])
+    career.mark_lead_delivered(conn, 1, founders=[{"name": "Dennis Berg", "email": "dennis@visoid.com"}])
     assert client.post("/api/startup-finder/leads/1/send", json={"token": "t"}).status_code == 200
     html = sent[0][3]
     assert "utm_campaign=visoid&amp;utm_content=dennis" in html

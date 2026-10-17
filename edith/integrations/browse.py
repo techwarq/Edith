@@ -17,7 +17,6 @@ docstring) doesn't apply to normal page loads.
 """
 
 import logging
-import sqlite3
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -25,8 +24,8 @@ from browserbase import Browserbase
 from playwright.sync_api import Page, sync_playwright
 
 from edith.config import BROWSERBASE_API_KEY, BROWSERBASE_PROJECT_ID
-from edith.memory import store
-from edith.tools.registry import ToolRegistry
+from edith.memory.records import system
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.integrations.browse")
 
@@ -94,7 +93,13 @@ def _find_submit_selector(page: Page) -> Optional[str]:
     return None
 
 
+@tool
 def browse_url(url: str) -> str:
+    """Visit a URL and extract its readable text content and title. If the page
+    contains a form, also lists the form's fields (name, type, label) so you
+    know what fill_form needs. Use this whenever the user shares a link and
+    wants details from it, or asks you to look something up on a specific page.
+    """
     try:
         with _session() as page:
             page.goto(url, timeout=PAGE_LOAD_TIMEOUT_MS, wait_until="domcontentloaded")
@@ -153,63 +158,22 @@ def execute_submit_form(_auth, args: dict) -> str:
 EXECUTORS = {"submit_form": execute_submit_form}
 
 
-def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
-    def fill_form(url: str, field_values: dict) -> str:
-        preview_lines = "\n".join(f"{name} = {value}" for name, value in field_values.items())
-        action_id = store.queue_pending_action(
-            conn,
-            tool_name="submit_form",
-            args={"url": url, "field_values": field_values},
-            preview=f"Submit form at {url}\n\n{preview_lines}",
-        )
-        return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's submitted."
+@tool
+def fill_form(ctx: ToolContext, url: str, field_values: dict[str, str]) -> str:
+    """Queue a form on a page to be filled and submitted, pending the user's approval
+    — never submits immediately. Call browse_url first to see what fields the form
+    has. Use facts you already know about the user (core memories, or recall)
+    for matching fields like name/email; ask the user for anything you don't have
+    before calling this.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "browse_url",
-                "description": (
-                    "Visit a URL and extract its readable text content and title. If the page "
-                    "contains a form, also lists the form's fields (name, type, label) so you "
-                    "know what fill_form needs. Use this whenever the user shares a link and "
-                    "wants details from it, or asks you to look something up on a specific page."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {"url": {"type": "string"}},
-                    "required": ["url"],
-                },
-            },
-        },
-        browse_url,
+    Args:
+        field_values: Map of form field name (from browse_url's field list) -> value to fill in.
+    """
+    preview_lines = "\n".join(f"{name} = {value}" for name, value in field_values.items())
+    action_id = system.queue_pending_action(
+        ctx.conn,
+        tool_name="submit_form",
+        args={"url": url, "field_values": field_values},
+        preview=f"Submit form at {url}\n\n{preview_lines}",
     )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "fill_form",
-                "description": (
-                    "Queue a form on a page to be filled and submitted, pending the user's approval "
-                    "— never submits immediately. Call browse_url first to see what fields the form "
-                    "has. Use facts you already know about the user (via recall_fact/semantic_search) "
-                    "for matching fields like name/email; ask the user for anything you don't have "
-                    "before calling this."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": {"type": "string"},
-                        "field_values": {
-                            "type": "object",
-                            "description": "Map of form field name (from browse_url's field list) -> value to fill in.",
-                            "additionalProperties": {"type": "string"},
-                        },
-                    },
-                    "required": ["url", "field_values"],
-                },
-            },
-        },
-        fill_form,
-    )
+    return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's submitted."

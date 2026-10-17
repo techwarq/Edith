@@ -14,10 +14,9 @@ import logging
 
 from google import genai
 from google.genai import types
-from qdrant_client import QdrantClient
 
-from edith.memory import vectors
-from edith.tools.registry import ToolRegistry
+from edith.memory.storage import qdrant
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.tools.research")
 
@@ -71,33 +70,19 @@ def _synthesize(client: genai.Client, model: str, query: str, findings: list[tup
     return resp.text or "Could not synthesize a research report from the gathered findings."
 
 
-def register(
-    registry: ToolRegistry, client: genai.Client, model: str, qdrant_client: QdrantClient | None = None
-) -> None:
-    def deep_research(query: str) -> str:
-        vectors.upsert(qdrant_client, client, "search_query", query)
-        subquestions = _decompose(client, model, query)
-        findings = [(q, _grounded_answer(client, model, q)) for q in subquestions]
-        return _synthesize(client, model, query, findings)
+@tool
+def deep_research(ctx: ToolContext, query: str) -> str:
+    """Multi-step research on a topic: decomposes the question into sub-questions,
+    runs a grounded web search per sub-question, and synthesizes one sourced answer
+    with gaps or thin sources explicitly flagged. Slower and more expensive than
+    web_search (several search calls, not one) — use only for genuinely thorough,
+    multi-angle requests, not a quick single-fact lookup.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "deep_research",
-                "description": (
-                    "Multi-step research on a topic: decomposes the question into sub-questions, "
-                    "runs a grounded web search per sub-question, and synthesizes one sourced answer "
-                    "with gaps or thin sources explicitly flagged. Slower and more expensive than "
-                    "web_search (several search calls, not one) — use only for genuinely thorough, "
-                    "multi-angle requests, not a quick single-fact lookup."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string", "description": "The research question."}},
-                    "required": ["query"],
-                },
-            },
-        },
-        deep_research,
-    )
+    Args:
+        query: The research question.
+    """
+    client, model = ctx.genai_client, ctx.genai_model
+    qdrant.upsert(ctx.qdrant_client, ctx.llm_client, "search_query", query)
+    subquestions = _decompose(client, model, query)
+    findings = [(q, _grounded_answer(client, model, q)) for q in subquestions]
+    return _synthesize(client, model, query, findings)

@@ -5,6 +5,7 @@ search per sub-question, synthesize one sourced answer."""
 from types import SimpleNamespace
 
 from edith.tools.search import research
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
@@ -34,8 +35,8 @@ def test_deep_research_decomposes_searches_and_synthesizes():
             "X and Y together: a synthesized answer.\nSources: a.com, b.com",  # synthesize
         ]
     )
-    registry = ToolRegistry()
-    research.register(registry, client, "fake-model", qdrant_client=None)
+    registry = ToolRegistry(ToolContext(genai_client=client, genai_model="fake-model"))
+    registry.register_module(research)
 
     result = registry.dispatch("deep_research", {"query": "Compare X and Y"})
 
@@ -51,8 +52,8 @@ def test_deep_research_falls_back_to_original_query_on_bad_decompose_json():
             "Final synthesized answer.",  # synthesize
         ]
     )
-    registry = ToolRegistry()
-    research.register(registry, client, "fake-model", qdrant_client=None)
+    registry = ToolRegistry(ToolContext(genai_client=client, genai_model="fake-model"))
+    registry.register_module(research)
 
     result = registry.dispatch("deep_research", {"query": "What's happening with widgets?"})
 
@@ -74,8 +75,8 @@ def test_deep_research_reports_failed_subquestion_without_crashing():
             return SimpleNamespace(text="Synthesized despite one failed search.")
 
     client = SimpleNamespace(models=_RaisingModels())
-    registry = ToolRegistry()
-    research.register(registry, client, "fake-model", qdrant_client=None)
+    registry = ToolRegistry(ToolContext(genai_client=client, genai_model="fake-model"))
+    registry.register_module(research)
 
     result = registry.dispatch("deep_research", {"query": "anything"})
 

@@ -286,7 +286,7 @@ async function connect(candidateToken) {
 }
 
 // --- Health Connect (Android app only): sync-on-open, no true background sync.
-// See edith/memory/health.py / POST /api/health-data on the backend. The plugin
+// See edith/memory/records/planning.py / POST /api/health-data on the backend. The plugin
 // (@capgo/capacitor-health) is only usable inside the Capacitor WebView — it
 // registers itself on window.Capacitor.Plugins.Health, callable directly from
 // this plain script with no bundler/import needed. isNativePlatform() is false

@@ -19,7 +19,7 @@ per endpoint and isn't worth guessing at.
 import json
 import subprocess
 
-from edith.tools.registry import ToolRegistry
+from edith.tools.base import tool
 
 MONID_TIMEOUT_SECONDS = 45  # CLI itself caps --wait at 120s; this is the subprocess hard ceiling around it
 _OUTPUT_CHARS = 6000  # cap so one large scrape result can't blow out the tool-call context budget
@@ -64,153 +64,88 @@ def _run_monid(args: list[str]) -> str:
     return _flag_if_truncated(_truncate(output))
 
 
-def register(registry: ToolRegistry) -> None:
-    def monid_discover(query: str, limit: int = 10) -> str:
-        raw = _run_monid(["discover", "-q", query, "-l", str(limit)])
-        if raw.startswith("ERROR"):
-            return raw
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return raw
-        results = data if isinstance(data, list) else data.get("results", [])
-        if not results:
-            return "No matching endpoints found."
-        lines = [
-            f"{r.get('provider')}/{r.get('endpoint')} (score={r.get('score')}, verified={r.get('verified')}): "
-            f"{r.get('description', '')}"
-            for r in results[:limit]
-        ]
-        return "\n".join(lines)
+@tool
+def monid_discover(query: str, limit: int = 10) -> str:
+    """Search Monid's catalog of hundreds of external data/tool endpoints (web scraping,
+    social media — Twitter/LinkedIn/etc, enrichment, search) by natural language. Always
+    run this before writing a custom scraper, calling a third-party API directly, or
+    telling the user you can't access something — a faster, ready-made endpoint often
+    already exists. Use a short noun-phrase query (e.g. 'twitter posts', not a full
+    sentence). Always call monid_inspect on a chosen result before monid_run.
 
-    def monid_inspect(provider: str, endpoint: str) -> str:
-        return _run_monid(["inspect", "-p", provider, "-e", endpoint])
+    Args:
+        query: Short noun-phrase search, e.g. 'linkedin posts'
+        limit: Max results to return (default 10)
+    """
+    raw = _run_monid(["discover", "-q", query, "-l", str(limit)])
+    if raw.startswith("ERROR"):
+        return raw
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    results = data if isinstance(data, list) else data.get("results", [])
+    if not results:
+        return "No matching endpoints found."
+    lines = [
+        f"{r.get('provider')}/{r.get('endpoint')} (score={r.get('score')}, verified={r.get('verified')}): "
+        f"{r.get('description', '')}"
+        for r in results[:limit]
+    ]
+    return "\n".join(lines)
 
-    def monid_run(
-        provider: str,
-        endpoint: str,
-        body_json: str = "",
-        query_json: str = "",
-        path_json: str = "",
-        wait_seconds: int = 30,
-    ) -> str:
-        args = ["run", "-p", provider, "-e", endpoint, "-w", str(max(1, min(wait_seconds, 60)))]
-        if body_json:
-            args += ["-i", body_json]
-        if query_json:
-            args += ["--query", query_json]
-        if path_json:
-            args += ["--path", path_json]
-        return _run_monid(args)
 
-    def monid_runs_get(run_id: str) -> str:
-        return _run_monid(["runs", "get", "-r", run_id])
+@tool
+def monid_inspect(provider: str, endpoint: str) -> str:
+    """Get the input schema (pathParams, queryParams, body) for a Monid endpoint found via
+    monid_discover. Always call this before monid_run — never guess an endpoint's parameters.
 
-    def monid_balance() -> str:
-        return _run_monid(["balance"])
+    Args:
+        provider: Provider slug from monid_discover, e.g. 'apify'
+        endpoint: Endpoint path from monid_discover, e.g. '/apidojo/tweet-scraper'
+    """
+    return _run_monid(["inspect", "-p", provider, "-e", endpoint])
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "monid_discover",
-                "description": (
-                    "Search Monid's catalog of hundreds of external data/tool endpoints (web scraping, "
-                    "social media — Twitter/LinkedIn/etc, enrichment, search) by natural language. Always "
-                    "run this before writing a custom scraper, calling a third-party API directly, or "
-                    "telling the user you can't access something — a faster, ready-made endpoint often "
-                    "already exists. Use a short noun-phrase query (e.g. 'twitter posts', not a full "
-                    "sentence). Always call monid_inspect on a chosen result before monid_run."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Short noun-phrase search, e.g. 'linkedin posts'"},
-                        "limit": {"type": "integer", "description": "Max results to return (default 10)"},
-                    },
-                    "required": ["query"],
-                },
-            },
-        },
-        monid_discover,
-    )
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "monid_inspect",
-                "description": (
-                    "Get the input schema (pathParams, queryParams, body) for a Monid endpoint found via "
-                    "monid_discover. Always call this before monid_run — never guess an endpoint's parameters."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "provider": {"type": "string", "description": "Provider slug from monid_discover, e.g. 'apify'"},
-                        "endpoint": {"type": "string", "description": "Endpoint path from monid_discover, e.g. '/apidojo/tweet-scraper'"},
-                    },
-                    "required": ["provider", "endpoint"],
-                },
-            },
-        },
-        monid_inspect,
-    )
+@tool
+def monid_run(
+    provider: str,
+    endpoint: str,
+    body_json: str = "",
+    query_json: str = "",
+    path_json: str = "",
+    wait_seconds: int = 30,
+) -> str:
+    """Execute a Monid endpoint (after inspecting its schema with monid_inspect) and wait for
+    the result. Many endpoints are billed per result — pass a single search term/URL/hashtag
+    and a small limit (5-10) unless the user explicitly wants more; some parameters (e.g.
+    maxItems) apply per query, not per call, so multiple queries multiply cost. If the run
+    comes back BLOCKED, a workspace budget/run cap stopped it — tell the user they can
+    adjust that at app.monid.ai.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "monid_run",
-                "description": (
-                    "Execute a Monid endpoint (after inspecting its schema with monid_inspect) and wait for "
-                    "the result. Many endpoints are billed per result — pass a single search term/URL/hashtag "
-                    "and a small limit (5-10) unless the user explicitly wants more; some parameters (e.g. "
-                    "maxItems) apply per query, not per call, so multiple queries multiply cost. If the run "
-                    "comes back BLOCKED, a workspace budget/run cap stopped it — tell the user they can "
-                    "adjust that at app.monid.ai."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "provider": {"type": "string"},
-                        "endpoint": {"type": "string"},
-                        "body_json": {"type": "string", "description": "JSON string for the body input, per monid_inspect's schema"},
-                        "query_json": {"type": "string", "description": "JSON string for query params, per monid_inspect's schema"},
-                        "path_json": {"type": "string", "description": "JSON string for path params, per monid_inspect's schema"},
-                        "wait_seconds": {"type": "integer", "description": "How long to block for the result, 1-60 (default 30)"},
-                    },
-                    "required": ["provider", "endpoint"],
-                },
-            },
-        },
-        monid_run,
-    )
+    Args:
+        body_json: JSON string for the body input, per monid_inspect's schema
+        query_json: JSON string for query params, per monid_inspect's schema
+        path_json: JSON string for path params, per monid_inspect's schema
+        wait_seconds: How long to block for the result, 1-60 (default 30)
+    """
+    args = ["run", "-p", provider, "-e", endpoint, "-w", str(max(1, min(wait_seconds, 60)))]
+    if body_json:
+        args += ["-i", body_json]
+    if query_json:
+        args += ["--query", query_json]
+    if path_json:
+        args += ["--path", path_json]
+    return _run_monid(args)
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "monid_runs_get",
-                "description": "Check the status/result of a previously started Monid run by its run ID.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"run_id": {"type": "string"}},
-                    "required": ["run_id"],
-                },
-            },
-        },
-        monid_runs_get,
-    )
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "monid_balance",
-                "description": "Check the remaining Monid workspace balance — use when the user asks about Monid spend/budget.",
-                "parameters": {"type": "object", "properties": {}},
-            },
-        },
-        monid_balance,
-    )
+@tool
+def monid_runs_get(run_id: str) -> str:
+    """Check the status/result of a previously started Monid run by its run ID."""
+    return _run_monid(["runs", "get", "-r", run_id])
+
+
+@tool
+def monid_balance() -> str:
+    """Check the remaining Monid workspace balance — use when the user asks about Monid spend/budget."""
+    return _run_monid(["balance"])

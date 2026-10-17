@@ -25,7 +25,7 @@ from typing import Any, Optional
 import openai
 
 from edith.agent import Agent
-from edith.memory import store
+from edith.memory import conversation
 from edith.observability import queries
 
 JUDGE_SYSTEM_PROMPT = (
@@ -90,7 +90,7 @@ def run_eval_case(
     case: dict[str, Any],
     run_id: str,
 ) -> dict[str, Any]:
-    scratch_session = store.create_session(conn, agent.model)
+    scratch_session = conversation.create_session(conn, agent.model)
     reply = agent.handle_turn(scratch_session, case["input"])
     trace_id = _latest_trace_id(conn, scratch_session)
     tools_called = _tools_called_for_trace(conn, trace_id) if trace_id else []
@@ -109,7 +109,7 @@ def run_eval_case(
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (run_id, case["id"], trace_id, score, int(passed), reasoning, json.dumps(tools_called)),
     )
-    store.end_session(conn, scratch_session)
+    conversation.end_session(conn, scratch_session)
     return {
         "case_id": case["id"],
         "case_name": case["name"],

@@ -42,7 +42,7 @@ This is your nightly reflection run — nobody is watching this live, so write f
    (they're in your system prompt) — I only care about news that's actually relevant to me,
    not a generic roundup.
 3. For anything durable worth remembering long-term (a pattern, a shift in something I track),
-   call save_fact. Don't save one-off transient details.
+   call remember. Don't remember one-off transient details.
 4. Write a concise digest: what's relevant and why, plus concrete ideas or next steps it
    suggests for me. If nothing relevant turned up, say so briefly rather than padding it out.
 

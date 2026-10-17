@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 from edith.startup_finder import finder, sources
 
 
@@ -36,7 +37,7 @@ def no_site_fetches(monkeypatch):
 
 @pytest.mark.real_portfolio
 def test_portfolio_sources_extracts_and_caches(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Shorooq": ("https://example.com", "middle_east")})
     monkeypatch.setattr(sources, "portfolio_page_text", lambda url: "page text")
     client = _Client(ROWS)
@@ -50,12 +51,12 @@ def test_portfolio_sources_extracts_and_caches(tmp_path, monkeypatch):
 
     finder.portfolio_sources(conn, client, "m")
     assert client.calls == 1
-    assert store.get_meta(conn, "startup_finder_portfolio:Shorooq")
+    assert system.get_setting(conn, "startup_finder_portfolio:Shorooq")
 
 
 @pytest.mark.real_portfolio
 def test_portfolio_failure_is_reported_not_raised(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Broken": ("https://example.com", None)})
 
     def boom(url):
@@ -68,7 +69,7 @@ def test_portfolio_failure_is_reported_not_raised(tmp_path, monkeypatch):
 
 @pytest.mark.real_portfolio
 def test_no_client_and_no_cache_skips(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(sources, "portfolio_page_text", lambda url: pytest.fail("should not fetch"))
     leads, report = finder.portfolio_sources(conn, None, "m")
     assert leads == []
@@ -76,7 +77,7 @@ def test_no_client_and_no_cache_skips(tmp_path, monkeypatch):
 
 @pytest.mark.real_portfolio
 def test_name_only_page_falls_back_to_detail_pages_and_blurbs(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Northzone": ("https://example.com", None)})
     monkeypatch.setattr(sources, "portfolio_page_text", lambda url: "page text")
     monkeypatch.setattr(sources, "portfolio_details", lambda url: [
@@ -93,15 +94,15 @@ def test_name_only_page_falls_back_to_detail_pages_and_blurbs(tmp_path, monkeypa
 @pytest.mark.real_portfolio
 def test_old_cache_is_upgraded_without_reextracting(tmp_path, monkeypatch):
     from datetime import datetime, timezone
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(sources, "PORTFOLIO_PAGES", {"Seedcamp": ("https://example.com", None)})
     monkeypatch.setattr(sources, "site_blurb", lambda d: "AI agents for lawyers")
-    store.set_meta(conn, "startup_finder_portfolio:Seedcamp", json.dumps(
+    system.set_setting(conn, "startup_finder_portfolio:Seedcamp", json.dumps(
         {"at": datetime.now(timezone.utc).isoformat(), "companies": [{"name": "Lexa", "domain": "lexa.io", "about": "", "country": ""}]}))
     client = _Client([])
     leads, _ = finder.portfolio_sources(conn, client, "m")
     assert client.calls == 0 and leads[0]["description"] == "AI agents for lawyers"
-    assert json.loads(store.get_meta(conn, "startup_finder_portfolio:Seedcamp"))["v"] == finder.PORTFOLIO_VERSION
+    assert json.loads(system.get_setting(conn, "startup_finder_portfolio:Seedcamp"))["v"] == finder.PORTFOLIO_VERSION
 
 
 def test_detail_links_and_host_pick():

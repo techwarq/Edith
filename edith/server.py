@@ -15,12 +15,13 @@ from edith.integrations import voice
 from edith.bootstrap import build_app_context, resolve_session
 from edith.commands import handle_command
 from edith.config import WHATSAPP_QR_PATH, load_settings
-from edith.memory import db, store
+from edith.memory import conversation
+from edith.memory.records import planning, system
+from edith.memory.storage import sqlite
 from edith.goals import api as goals_api
 from edith.job_applications import api as job_applications_api
 from edith.startup_finder import api as startup_finder_api
 from edith.mcp import api as mcp_api
-from edith.memory import health as health_metrics
 from edith.monitor import api as monitor_api
 from edith.observability import api as observability_api
 from edith.observability.seed_evals import seed_default_evals
@@ -38,7 +39,7 @@ logger = logging.getLogger("edith.server")
 settings = load_settings()
 try:
     ctx = build_app_context(settings)
-except db.DatabaseError as e:
+except sqlite.DatabaseError as e:
     raise SystemExit(f"Error: {e}") from e
 
 API_TOKEN = os.environ.get("EDITH_API_TOKEN", "").strip()
@@ -99,19 +100,6 @@ async def connect(request: Request) -> JSONResponse:
     return JSONResponse({"session_id": session_id})
 
 
-def _store_health_metrics(metrics: list[dict]) -> int:
-    written = health_metrics.store_metrics(ctx.conn, metrics)
-    latest_weight = next((m for m in reversed(metrics) if m.get("type") == "weight"), None)
-    if latest_weight:
-        store.save_fact(
-            ctx.conn,
-            key="current_weight",
-            value=f"{latest_weight['value']} {latest_weight.get('unit') or 'kg'} (as of {latest_weight['date']})",
-            category="fact",
-        )
-    return written
-
-
 @app.post("/api/health-data", response_model=None)
 async def health_data(request: Request) -> JSONResponse:
     body = await request.json()
@@ -120,7 +108,7 @@ async def health_data(request: Request) -> JSONResponse:
     metrics = body.get("metrics")
     if not isinstance(metrics, list) or not metrics:
         return JSONResponse({"error": "metrics must be a non-empty list"}, status_code=400)
-    written = await asyncio.to_thread(_store_health_metrics, metrics)
+    written = await asyncio.to_thread(planning.store_metrics, ctx.conn, metrics)
     return JSONResponse({"written": written})
 
 
@@ -133,13 +121,13 @@ async def register_device(request: Request) -> JSONResponse:
     platform = body.get("platform", "android").strip() or "android"
     if not device_token:
         return JSONResponse({"error": "device_token is required"}, status_code=400)
-    await asyncio.to_thread(store.save_device_token, ctx.conn, device_token, platform)
+    await asyncio.to_thread(system.save_device_token, ctx.conn, device_token, platform)
     return JSONResponse({"ok": True})
 
 
 def _latest_job_reply() -> dict:
-    session_id = store.get_or_create_jobs_session(ctx.conn, settings.model)
-    replies = store.get_recent_assistant_replies(ctx.conn, session_id, 1)
+    session_id = conversation.get_or_create_jobs_session(ctx.conn, settings.model)
+    replies = conversation.get_recent_assistant_replies(ctx.conn, session_id, 1)
     if not replies:
         return {"content": None, "audio_base64": None, "mime_type": None}
 

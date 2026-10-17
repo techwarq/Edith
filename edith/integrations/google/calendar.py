@@ -3,7 +3,6 @@
 """
 
 import logging
-import sqlite3
 from typing import Callable
 
 from google.oauth2.credentials import Credentials
@@ -11,8 +10,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from edith.integrations.google.auth import get_credentials
-from edith.memory import store
-from edith.tools.registry import ToolRegistry
+from edith.memory.records import system
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.integrations.google.calendar")
 
@@ -23,7 +22,14 @@ def _service(creds: Credentials):
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
+@tool
 def calendar_list_events(time_min: str, time_max: str) -> str:
+    """List the user's calendar events in a time range.
+
+    Args:
+        time_min: RFC3339 timestamp, e.g. 2026-07-18T00:00:00Z
+        time_max: RFC3339 timestamp
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -71,56 +77,20 @@ EXECUTORS: dict[str, Callable[[Credentials, dict], str]] = {
 }
 
 
-def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
-    def create_calendar_event(summary: str, start_iso: str, end_iso: str, description: str = "") -> str:
-        action_id = store.queue_pending_action(
-            conn,
-            tool_name="create_calendar_event",
-            args={"summary": summary, "start_iso": start_iso, "end_iso": end_iso, "description": description},
-            preview=f"Create calendar event '{summary}'\n{start_iso} -> {end_iso}\n{description}",
-        )
-        return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's created."
+@tool
+def create_calendar_event(ctx: ToolContext, summary: str, start_iso: str, end_iso: str, description: str = "") -> str:
+    """Propose creating a calendar event. This does NOT create it immediately — it
+    queues the event for the user's review. Tell the user to run /approve to
+    confirm before it's created.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "calendar_list_events",
-                "description": "List the user's calendar events in a time range.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "time_min": {"type": "string", "description": "RFC3339 timestamp, e.g. 2026-07-18T00:00:00Z"},
-                        "time_max": {"type": "string", "description": "RFC3339 timestamp"},
-                    },
-                    "required": ["time_min", "time_max"],
-                },
-            },
-        },
-        calendar_list_events,
+    Args:
+        start_iso: RFC3339 timestamp
+        end_iso: RFC3339 timestamp
+    """
+    action_id = system.queue_pending_action(
+        ctx.conn,
+        tool_name="create_calendar_event",
+        args={"summary": summary, "start_iso": start_iso, "end_iso": end_iso, "description": description},
+        preview=f"Create calendar event '{summary}'\n{start_iso} -> {end_iso}\n{description}",
     )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "create_calendar_event",
-                "description": (
-                    "Propose creating a calendar event. This does NOT create it immediately — it "
-                    "queues the event for the user's review. Tell the user to run /approve to "
-                    "confirm before it's created."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string"},
-                        "start_iso": {"type": "string", "description": "RFC3339 timestamp"},
-                        "end_iso": {"type": "string", "description": "RFC3339 timestamp"},
-                        "description": {"type": "string"},
-                    },
-                    "required": ["summary", "start_iso", "end_iso"],
-                },
-            },
-        },
-        create_calendar_event,
-    )
+    return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's created."

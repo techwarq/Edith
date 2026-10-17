@@ -72,7 +72,7 @@ def _sanitize_for_api(messages: list[dict]) -> list[dict]:
       message, but DashScope 400s with "The content field is a required
       field" — coerce to "" as a last-resort safety net here, on top of the
       write/read-side fixes in run_completion_with_tools and
-      edith/memory/store.py's _row_to_openai_message.
+      edith/memory/conversation.py's _row_to_openai_message.
     """
     sanitized = []
     for m in messages:
@@ -141,12 +141,10 @@ def call_openrouter_chat(
 # spinner. Falls back to a humanized version of the tool name for anything not listed here.
 TOOL_STATUS = {
     "web_search": "Searching the web",
-    "semantic_search": "Searching memory",
+    "recall": "Searching memory",
     "search_history": "Searching past conversations",
-    "save_fact": "Saving a note",
-    "update_fact": "Updating a note",
-    "forget_fact": "Forgetting a note",
-    "recall_fact": "Looking up a note",
+    "remember": "Remembering",
+    "forget_memory": "Forgetting a memory",
     "gmail_search": "Searching Gmail",
     "gmail_read": "Reading an email",
     "drive_search": "Searching Drive",
@@ -246,7 +244,7 @@ def run_completion_with_tools(
         # message, but Alibaba's DashScope backend (Qwen models via OpenRouter) 400s
         # with "The content field is a required field" on null content — coerce to
         # "" instead, which every provider accepts. See _row_to_openai_message in
-        # edith/memory/store.py for the matching fix on the history-replay side
+        # edith/memory/conversation.py for the matching fix on the history-replay side
         # (old rows already persisted with NULL content hit the same 400 otherwise).
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
         if tool_calls:

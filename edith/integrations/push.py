@@ -15,7 +15,7 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 
 from edith.config import Settings
-from edith.memory import store
+from edith.memory.records import system
 
 logger = logging.getLogger("edith.integrations.push")
 
@@ -45,7 +45,7 @@ def send_push_notification(
         logger.info("Push notification skipped (FIREBASE_SERVICE_ACCOUNT_JSON not set): %s", title)
         return
 
-    tokens = store.list_device_tokens(conn)
+    tokens = system.list_device_tokens(conn)
     if not tokens:
         logger.info("Push notification skipped (no registered devices): %s", title)
         return
@@ -61,6 +61,6 @@ def send_push_notification(
             logger.info("Push notification sent: %s", message_id)
         except (messaging.UnregisteredError, ValueError):
             logger.info("Pruning stale/invalid device token")
-            store.delete_device_token(conn, token)
+            system.delete_device_token(conn, token)
         except Exception:
             logger.exception("Failed to send push notification to a device")

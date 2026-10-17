@@ -1,35 +1,15 @@
 import pytest
 
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.tools.growth import social
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
-
-
-class FakeEmbedding:
-    def __init__(self, values):
-        self.values = values
-
-
-class FakeEmbedResponse:
-    def __init__(self, values):
-        self.embeddings = [FakeEmbedding(values)]
-
-
-class FakeModels:
-    def __init__(self, vector=(0.1, 0.2, 0.3)):
-        self.vector = vector
-
-    def embed_content(self, model, contents, config=None):
-        return FakeEmbedResponse(self.vector)
-
-
-class FakeGenaiClient:
-    def __init__(self):
-        self.models = FakeModels()
+from tests.memory.test_qdrant import FakeLLMClient
 
 
 class FakeScoredPoint:
-    def __init__(self, score, payload):
+    def __init__(self, score, payload, id=1):
+        self.id = id
         self.score = score
         self.payload = payload
 
@@ -53,15 +33,15 @@ class FakeQdrantClient:
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
 @pytest.fixture
 def registry(conn):
-    r = ToolRegistry()
-    social.register(r, conn, FakeQdrantClient(), FakeGenaiClient())
+    r = ToolRegistry(ToolContext(conn=conn, qdrant_client=FakeQdrantClient(), llm_client=FakeLLMClient()))
+    r.register_module(social)
     return r
 
 
@@ -82,8 +62,8 @@ def test_list_social_skills_empty(registry):
 
 def test_save_social_skill_embeds_with_own_type(conn):
     qdrant_client = FakeQdrantClient()
-    r = ToolRegistry()
-    social.register(r, conn, qdrant_client, FakeGenaiClient())
+    r = ToolRegistry(ToolContext(conn=conn, qdrant_client=qdrant_client, llm_client=FakeLLMClient()))
+    r.register_module(social)
     r.dispatch("save_social_skill", {"title": "Niche", "content": "AI agents for solo builders.", "platform": "x"})
 
     assert len(qdrant_client.upserted) == 1
@@ -98,8 +78,8 @@ def test_recall_social_skills_returns_scored_matches(registry):
     qdrant_client.query_result = FakeQueryResult(
         [FakeScoredPoint(0.9, {"type": social.SOCIAL_SKILL_CATEGORY, "text": "Niche: AI agents for solo builders."})]
     )
-    r = ToolRegistry()
-    social.register(r, None, qdrant_client, FakeGenaiClient())
+    r = ToolRegistry(ToolContext(qdrant_client=qdrant_client, llm_client=FakeLLMClient()))
+    r.register_module(social)
     result = r.dispatch("recall_social_skills", {"query": "AI agents"})
     assert "AI agents for solo builders" in result
     assert "score=0.90" in result
@@ -110,6 +90,6 @@ def test_recall_social_skills_no_matches(registry):
 
 
 def test_recall_social_skills_qdrant_not_configured(conn):
-    r = ToolRegistry()
-    social.register(r, conn, None, None)
+    r = ToolRegistry(ToolContext(conn=conn))
+    r.register_module(social)
     assert r.dispatch("recall_social_skills", {"query": "anything"}) == "Semantic memory isn't configured yet."

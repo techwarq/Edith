@@ -1,42 +1,38 @@
-"""Tests for edith/memory/vectors.py — the Qdrant-backed semantic memory layer.
+"""Tests for edith/memory/storage/qdrant.py — the Qdrant vector index.
 
-Fakes a QdrantClient and a genai.Client rather than hitting real services,
+Fakes a QdrantClient and an OpenAI-compatible client rather than hitting real services,
 mirroring tests/integrations/test_voice.py's fake-client pattern. The "client is None ->
 no-op / empty result" behavior is the main thing worth locking down: it's
-what lets every call site (save_fact, agent message persistence, web_search)
+what lets every call site (the brain, social skills, web_search)
 stay unconditional even when Qdrant isn't configured.
 """
 
-from edith.memory import vectors
+from edith.memory.storage import qdrant
 
 
-class FakeEmbedding:
-    def __init__(self, values):
-        self.values = values
+class _Obj:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
 
 
-class FakeEmbedResponse:
-    def __init__(self, values):
-        self.embeddings = [FakeEmbedding(values)]
-
-
-class FakeModels:
+class FakeEmbeddings:
     def __init__(self, vector):
         self.vector = vector
         self.calls = []
 
-    def embed_content(self, model, contents, config=None):
-        self.calls.append(contents)
-        return FakeEmbedResponse(self.vector)
+    def create(self, model, input):
+        self.calls.append(input)
+        return _Obj(data=[_Obj(embedding=list(self.vector))])
 
 
-class FakeGenaiClient:
+class FakeLLMClient:
     def __init__(self, vector=(0.1, 0.2, 0.3)):
-        self.models = FakeModels(vector)
+        self.embeddings = FakeEmbeddings(vector)
 
 
 class FakeScoredPoint:
-    def __init__(self, score, payload):
+    def __init__(self, score, payload, id=1):
+        self.id = id
         self.score = score
         self.payload = payload
 
@@ -51,12 +47,16 @@ class FakeQdrantClient:
         self.upserted = []
         self.query_result = FakeQueryResult([])
         self.existing_collections = set()
+        self.payload_indexes = set()
 
     def collection_exists(self, name):
         return name in self.existing_collections
 
     def create_collection(self, collection_name, vectors_config):
         self.existing_collections.add(collection_name)
+
+    def create_payload_index(self, collection_name, field_name, field_schema):
+        self.payload_indexes.add(field_name)
 
     def upsert(self, collection_name, points):
         self.upserted.extend(points)
@@ -70,23 +70,23 @@ class FakeQdrantClient:
 # ---------------------------------------------------------------------------
 
 def test_ensure_collection_noop_when_client_none():
-    vectors.ensure_collection(None)  # must not raise
+    qdrant.ensure_collection(None)  # must not raise
 
 
 def test_upsert_noop_when_client_none():
-    vectors.upsert(None, FakeGenaiClient(), "fact", "some text")  # must not raise
+    qdrant.upsert(None, FakeLLMClient(), "fact", "some text")  # must not raise
 
 
 def test_semantic_search_returns_empty_when_client_none():
-    assert vectors.semantic_search(None, FakeGenaiClient(), "query") == []
+    assert qdrant.search(None, FakeLLMClient(), "query") == []
 
 
 def test_upsert_noop_for_blank_text():
     client = FakeQdrantClient()
-    genai_client = FakeGenaiClient()
-    vectors.upsert(client, genai_client, "fact", "   ")
+    llm_client = FakeLLMClient()
+    qdrant.upsert(client, llm_client, "fact", "   ")
     assert client.upserted == []
-    assert genai_client.models.calls == []  # never even embedded
+    assert llm_client.embeddings.calls == []  # never even embedded
 
 
 # ---------------------------------------------------------------------------
@@ -95,15 +95,16 @@ def test_upsert_noop_for_blank_text():
 
 def test_ensure_collection_creates_when_missing():
     client = FakeQdrantClient()
-    vectors.ensure_collection(client)
-    assert vectors.QDRANT_COLLECTION in client.existing_collections
+    qdrant.ensure_collection(client)
+    assert qdrant.QDRANT_COLLECTION in client.existing_collections
 
 
 def test_ensure_collection_idempotent_when_exists():
     client = FakeQdrantClient()
-    client.existing_collections.add(vectors.QDRANT_COLLECTION)
-    vectors.ensure_collection(client)  # must not raise / recreate
-    assert vectors.QDRANT_COLLECTION in client.existing_collections
+    client.existing_collections.add(qdrant.QDRANT_COLLECTION)
+    qdrant.ensure_collection(client)  # must not raise / recreate
+    assert qdrant.QDRANT_COLLECTION in client.existing_collections
+    assert client.payload_indexes == {"type"}
 
 
 # ---------------------------------------------------------------------------
@@ -112,14 +113,14 @@ def test_ensure_collection_idempotent_when_exists():
 
 def test_upsert_embeds_and_stores_point_with_payload():
     client = FakeQdrantClient()
-    genai_client = FakeGenaiClient(vector=(1.0, 2.0, 3.0))
-    vectors.upsert(client, genai_client, "fact", "likes: coffee", category="preference")
+    llm_client = FakeLLMClient(vector=(1.0, 2.0, 3.0))
+    qdrant.upsert(client, llm_client, "fact", "likes: coffee", category="preference")
 
     assert len(client.upserted) == 1
     point = client.upserted[0]
     assert list(point.vector) == [1.0, 2.0, 3.0]
     assert point.payload == {"type": "fact", "text": "likes: coffee", "category": "preference"}
-    assert genai_client.models.calls == ["likes: coffee"]
+    assert llm_client.embeddings.calls == ["likes: coffee"]
 
 
 def test_upsert_swallows_qdrant_errors():
@@ -127,25 +128,25 @@ def test_upsert_swallows_qdrant_errors():
         def upsert(self, collection_name, points):
             raise RuntimeError("qdrant is down")
 
-    vectors.upsert(BrokenClient(), FakeGenaiClient(), "fact", "some text")  # must not raise
+    qdrant.upsert(BrokenClient(), FakeLLMClient(), "fact", "some text")  # must not raise
 
 
 # ---------------------------------------------------------------------------
 # semantic_search
 # ---------------------------------------------------------------------------
 
-def test_semantic_search_returns_scored_payloads():
+def test_search_returns_scored_payloads():
     client = FakeQdrantClient()
     client.query_result = FakeQueryResult(
         [FakeScoredPoint(0.87, {"type": "fact", "text": "likes coffee"})]
     )
-    results = vectors.semantic_search(client, FakeGenaiClient(), "beverages")
-    assert results == [{"score": 0.87, "type": "fact", "text": "likes coffee"}]
+    results = qdrant.search(client, FakeLLMClient(), "beverages")
+    assert results == [{"id": 1, "score": 0.87, "type": "fact", "text": "likes coffee"}]
 
 
-def test_semantic_search_swallows_qdrant_errors():
+def test_search_swallows_qdrant_errors():
     class BrokenClient(FakeQdrantClient):
         def query_points(self, **kwargs):
             raise RuntimeError("qdrant is down")
 
-    assert vectors.semantic_search(BrokenClient(), FakeGenaiClient(), "query") == []
+    assert qdrant.search(BrokenClient(), FakeLLMClient(), "query") == []

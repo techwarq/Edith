@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from edith.config import DEEP_RESEARCH_BUDGET_USD, DEEP_RESEARCH_SLEEP_HOURS, Settings
-from edith.memory import store
+from edith.memory import conversation
 from edith.temporal import schedules
 from edith.temporal.client import TemporalNotConfigured, get_client
 
@@ -45,8 +45,8 @@ def build_router(conn: sqlite3.Connection, settings: Settings, api_token: str) -
     async def runs(token: str = "", limit: int = 5) -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        jobs_session_id = await asyncio.to_thread(store.get_or_create_jobs_session, conn, settings.model)
-        replies = await asyncio.to_thread(store.get_recent_assistant_replies, conn, jobs_session_id, limit)
+        jobs_session_id = await asyncio.to_thread(conversation.get_or_create_jobs_session, conn, settings.model)
+        replies = await asyncio.to_thread(conversation.get_recent_assistant_replies, conn, jobs_session_id, limit)
         return JSONResponse({"replies": replies})
 
     return router

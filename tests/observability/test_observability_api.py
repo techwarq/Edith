@@ -7,7 +7,7 @@ import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.observability import api as observability_api
 from edith.observability.tracing import Recorder
 
@@ -44,7 +44,7 @@ class _FakeJudgeClient:
 
 
 def _client(tmp_path):
-    conn = db.connect(tmp_path / "test.db")
+    conn = sqlite.connect(tmp_path / "test.db")
     conn.execute("INSERT INTO sessions (id, model) VALUES ('s1', 'gemini-3.5-flash')")
     agent = _FakeAgent(conn)
     router = observability_api.build_router(conn, agent, _FakeJudgeClient(), "judge-model", TOKEN)

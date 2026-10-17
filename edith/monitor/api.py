@@ -4,7 +4,7 @@ external API on each request (no local caching/storage — a personal
 dashboard loaded a few times a day doesn't need it) and report
 {"configured": false} rather than erroring when their credentials aren't
 set, same "optional integration" convention as every other panel in this
-codebase. Ideas + Bugs is real CRUD against edith/memory/ideas_bugs_store.py,
+codebase. Ideas + Bugs is real CRUD against edith/memory/planning.py,
 since it has no external source. Same shared-token auth pattern as every
 other router in the project.
 """
@@ -18,11 +18,12 @@ from fastapi.responses import JSONResponse
 from google import genai
 
 from edith.config import Settings
-from edith.memory import ideas_bugs_store, store
+from edith.memory.brain import notes
+from edith.memory.records import planning, system
 from edith.monitor import dodo, github_shipping, vercel_analytics
 from edith.tools.ops.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
 from edith.tools.search.news import fetch_news
-from edith.tools.growth.social import SOCIAL_SKILL_CATEGORY
+from edith.tools.growth.social import CONTENT_STRATEGY_REGION, SOCIAL_SKILL_CATEGORY
 
 
 def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: genai.Client, api_token: str) -> APIRouter:
@@ -46,7 +47,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         return JSONResponse(data)
 
     def _list_vercel_projects() -> list[dict]:
-        facts = store.get_facts_by_category(conn, VERCEL_PROJECT_CATEGORY)
+        facts = system.list_settings(conn, VERCEL_PROJECT_CATEGORY)
         return [{"project_id": f["key"], "label": f["value"]} for f in facts]
 
     def _fetch_one_project(project_id: str, label: str, days: int) -> dict:
@@ -77,7 +78,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         label = (body.get("label") or "").strip() or project_id
 
         def _save() -> None:
-            store.save_fact(conn, key=project_id, value=label, category=VERCEL_PROJECT_CATEGORY)
+            system.set_setting(conn, key=project_id, value=label, category=VERCEL_PROJECT_CATEGORY)
 
         await asyncio.to_thread(_save)
         return JSONResponse({"project_id": project_id, "label": label})
@@ -90,15 +91,15 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         project_id = (body.get("project_id") or "").strip()
         if not project_id:
             return JSONResponse({"error": "project_id is required"}, status_code=400)
-        ok = await asyncio.to_thread(store.forget_fact, conn, project_id)
+        ok = await asyncio.to_thread(system.delete_setting, conn, project_id)
         return JSONResponse({"ok": ok})
 
     def _list_shipping_repos() -> list[dict]:
-        facts = store.get_facts_by_category(conn, SHIPPING_REPO_CATEGORY)
+        facts = system.list_settings(conn, SHIPPING_REPO_CATEGORY)
         return [{"repo": f["key"], "label": f["value"]} for f in facts]
 
     def _list_shipping_accounts() -> list[dict]:
-        facts = store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY)
+        facts = system.list_settings(conn, SHIPPING_ACCOUNT_CATEGORY)
         return [{"username": f["key"], "label": f["value"]} for f in facts]
 
     @router.get("/shipping", response_model=None)
@@ -129,7 +130,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         label = (body.get("label") or "").strip() or repo
 
         def _save() -> None:
-            store.save_fact(conn, key=repo, value=label, category=SHIPPING_REPO_CATEGORY)
+            system.set_setting(conn, key=repo, value=label, category=SHIPPING_REPO_CATEGORY)
 
         await asyncio.to_thread(_save)
         return JSONResponse({"repo": repo, "label": label})
@@ -142,7 +143,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         repo = (body.get("repo") or "").strip()
         if not repo:
             return JSONResponse({"error": "repo is required"}, status_code=400)
-        ok = await asyncio.to_thread(store.forget_fact, conn, repo)
+        ok = await asyncio.to_thread(system.delete_setting, conn, repo)
         return JSONResponse({"ok": ok})
 
     @router.post("/shipping/accounts", response_model=None)
@@ -156,7 +157,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         label = (body.get("label") or "").strip() or username
 
         def _save() -> None:
-            store.save_fact(conn, key=username, value=label, category=SHIPPING_ACCOUNT_CATEGORY)
+            system.set_setting(conn, key=username, value=label, category=SHIPPING_ACCOUNT_CATEGORY)
 
         await asyncio.to_thread(_save)
         return JSONResponse({"username": username, "label": label})
@@ -169,7 +170,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         username = (body.get("username") or "").strip()
         if not username:
             return JSONResponse({"error": "username is required"}, status_code=400)
-        ok = await asyncio.to_thread(store.forget_fact, conn, username)
+        ok = await asyncio.to_thread(system.delete_setting, conn, username)
         return JSONResponse({"ok": ok})
 
     @router.get("/news", response_model=None)
@@ -180,8 +181,11 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         return JSONResponse({"text": text})
 
     def _social_summary() -> dict:
-        content_strategy = store.get_facts_by_category(conn, "content_strategy")
-        social_skills = store.get_facts_by_category(conn, SOCIAL_SKILL_CATEGORY)
+        content_strategy = [
+            {"key": f"#{n['id']}", "value": n["context"], "category": n["region"]}
+            for n in notes.in_region(conn, CONTENT_STRATEGY_REGION)
+        ]
+        social_skills = system.list_settings(conn, SOCIAL_SKILL_CATEGORY)
         return {
             "content_strategy": content_strategy,
             "skills": [{"title": f["key"], "preview": f["value"][:120]} for f in social_skills],
@@ -197,7 +201,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
     async def list_ideas_bugs(token: str = "", kind: Optional[str] = None, status: Optional[str] = None) -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        items = await asyncio.to_thread(ideas_bugs_store.list_ideas_bugs, conn, kind, status)
+        items = await asyncio.to_thread(planning.list_ideas_bugs, conn, kind, status)
         return JSONResponse({"items": items})
 
     @router.post("/ideas-bugs", response_model=None)
@@ -211,8 +215,8 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
             return JSONResponse({"error": "kind (idea|bug) and title are required"}, status_code=400)
 
         def _create() -> dict:
-            item_id = ideas_bugs_store.create_idea_bug(conn, kind, title, body.get("note") or None, body.get("project") or None)
-            return ideas_bugs_store.get_idea_bug(conn, item_id)
+            item_id = planning.create_idea_bug(conn, kind, title, body.get("note") or None, body.get("project") or None)
+            return planning.get_idea_bug(conn, item_id)
 
         return JSONResponse(await asyncio.to_thread(_create))
 
@@ -221,17 +225,17 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: gen
         body = await request.json()
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
-        ok = await asyncio.to_thread(ideas_bugs_store.resolve_idea_bug, conn, item_id)
+        ok = await asyncio.to_thread(planning.resolve_idea_bug, conn, item_id)
         if not ok:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(await asyncio.to_thread(ideas_bugs_store.get_idea_bug, conn, item_id))
+        return JSONResponse(await asyncio.to_thread(planning.get_idea_bug, conn, item_id))
 
     @router.post("/ideas-bugs/{item_id}/delete", response_model=None)
     async def delete_idea_bug(item_id: int, request: Request) -> JSONResponse:
         body = await request.json()
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
-        ok = await asyncio.to_thread(ideas_bugs_store.delete_idea_bug, conn, item_id)
+        ok = await asyncio.to_thread(planning.delete_idea_bug, conn, item_id)
         return JSONResponse({"ok": ok})
 
     return router

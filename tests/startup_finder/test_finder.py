@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from edith.memory import db, store
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career, system
+from edith.memory.storage import sqlite
 from edith.startup_finder import finder
 
 
@@ -25,7 +25,7 @@ def _patch_crawl(monkeypatch, rows):
 
 
 def test_find_returns_requested_count_one_per_company_and_never_repeats(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
 
     first = finder.find(conn, count=2)
@@ -39,7 +39,7 @@ def test_find_returns_requested_count_one_per_company_and_never_repeats(tmp_path
 
 
 def test_hn_title_extracted(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     out = finder.find(conn, count=10)
     hn = [l for l in out["leads"] if l["source"] == "hn"]
@@ -47,14 +47,14 @@ def test_hn_title_extracted(tmp_path, monkeypatch):
 
 
 def test_kind_filter(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     out = finder.find(conn, count=10, kind="founder")
     assert [l["company"] for l in out["leads"]] == ["Vox"]
 
 
 def test_skips_domains_already_applied(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     conn.execute("INSERT INTO job_applications (company, company_domain) VALUES ('Clipster', 'clipster.ai')")
     _patch_crawl(monkeypatch, _raw())
     out = finder.find(conn, count=10)
@@ -62,25 +62,25 @@ def test_skips_domains_already_applied(tmp_path, monkeypatch):
 
 
 def test_uses_cached_crawl_when_fresh(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     calls = []
     monkeypatch.setattr(finder, "crawl", lambda on_progress=None: calls.append(1) or ([dict(r) for r in _raw()], {"sources": {}, "errors": {}}))
     finder.find(conn, count=1)
-    store.set_meta(conn, finder.LAST_CRAWL_KEY, datetime.now(timezone.utc).isoformat())
-    leads_store.upsert_leads(conn, [{"dedup_key": f"x:{i}", "kind": "founder", "company": f"C{i}", "score": 1} for i in range(10)])
+    system.set_setting(conn, finder.LAST_CRAWL_KEY, datetime.now(timezone.utc).isoformat())
+    career.upsert_leads(conn, [{"dedup_key": f"x:{i}", "kind": "founder", "company": f"C{i}", "score": 1} for i in range(10)])
     finder.find(conn, count=1)
     assert len(calls) == 1
 
 
 def test_refresh_prunes_leads_that_no_longer_qualify(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     finder.refresh(conn)
-    before = leads_store.count_new(conn)
+    before = career.count_new_leads(conn)
     _patch_crawl(monkeypatch, [r for r in _raw() if r["dedup_key"] != "co:vox.ai"])
     report = finder.refresh(conn)
     assert report["pruned"] == 1
-    assert leads_store.count_new(conn) == before - 1
+    assert career.count_new_leads(conn) == before - 1
 
 
 class FakeModels:
@@ -111,13 +111,13 @@ def _no_fetch(monkeypatch):
 
 
 def test_pitches_attached(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=2, genai_client=FakeClient(), model="m")
     assert out["returned"] == 2
     assert all(l["pitch"].startswith("i like that you're building thing") for l in out["leads"])
-    stored = leads_store.get_lead(conn, out["leads"][0]["id"])
+    stored = career.get_lead(conn, out["leads"][0]["id"])
     assert stored["status"] == "delivered" and stored["pitch"]
     assert stored["reasons"][0].startswith("fit 8/10")
     assert stored["draft_subject"] == "engineer who builds ai agents - sonali nayak"
@@ -126,7 +126,7 @@ def test_pitches_attached(tmp_path, monkeypatch):
 
 
 def test_non_ai_companies_are_skipped(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=3, genai_client=FakeClient(non_ai={"Vox"}), model="m")
@@ -134,7 +134,7 @@ def test_non_ai_companies_are_skipped(tmp_path, monkeypatch):
 
 
 def test_team_size_window(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=5, genai_client=FakeClient(), model="m", min_team=8, max_team=40)
@@ -142,19 +142,19 @@ def test_team_size_window(tmp_path, monkeypatch):
 
 
 def test_poor_fit_roles_are_skipped_and_replaced(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=3, genai_client=FakeClient(bad_companies={"Clipster"}), model="m")
     companies = [l["company"] for l in out["leads"]]
     assert "Clipster" not in companies
     assert len(companies) == 2
-    skipped = leads_store.list_leads(conn, status="skipped")
+    skipped = career.list_leads(conn, status="skipped")
     assert {l["company"] for l in skipped} == {"Clipster"}
 
 
 def test_unresolved_region_resolved_by_judge(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, _raw())
     _no_fetch(monkeypatch)
     out = finder.find(conn, count=5, genai_client=FakeClient(us_companies={"Tiny"}), model="m")
@@ -163,16 +163,16 @@ def test_unresolved_region_resolved_by_judge(tmp_path, monkeypatch):
 
 
 def test_us_leads_never_stored(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     rows = _raw() + [{"kind": "founder", "dedup_key": "co:us.ai", "company": "USCo", "domain": "us.ai", "region": "us",
                       "description": "AI video", "team_size": 5}]
     _patch_crawl(monkeypatch, rows)
     finder.refresh(conn)
-    assert "USCo" not in [l["company"] for l in leads_store.list_leads(conn, limit=100)]
+    assert "USCo" not in [l["company"] for l in career.list_leads(conn, limit=100)]
 
 
 def test_location_and_team_filters(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     rows = _raw() + [
         {"kind": "founder", "dedup_key": "co:fjord.no", "company": "Fjord AI", "domain": "fjord.no", "region": "europe",
          "locations": [], "description": "AI video for creators", "team_size": 5, "founded": 2025},
@@ -186,7 +186,7 @@ def test_location_and_team_filters(tmp_path, monkeypatch):
 
 
 def test_max_team_filter(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     rows = [
         {"kind": "founder", "dedup_key": "co:a.no", "company": "Tiny", "domain": "a.no", "region": "europe", "locations": ["Norway"], "description": "AI video", "team_size": 5},
         {"kind": "founder", "dedup_key": "co:b.no", "company": "Mid", "domain": "b.no", "region": "europe", "locations": ["Norway"], "description": "AI video", "team_size": 120},
@@ -197,7 +197,7 @@ def test_max_team_filter(tmp_path, monkeypatch):
 
 
 def test_unfunded_hub_companies_dropped(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     rows = [
         {"kind": "founder", "dedup_key": "co:boot.no", "company": "Boot", "domain": "boot.no", "source": "thehub", "region": "europe",
          "locations": ["Norway"], "description": "AI video", "team_size": 5, "funded": False, "funding": "bootstrapping"},
@@ -215,7 +215,7 @@ def test_unfunded_hub_companies_dropped(tmp_path, monkeypatch):
 
 
 def test_hn_lead_needs_judge_funding_confirmation(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     _patch_crawl(monkeypatch, [r for r in _raw() if r["source"] == "hn"])
     _no_fetch(monkeypatch)
 
@@ -234,18 +234,18 @@ def test_hn_lead_needs_judge_funding_confirmation(tmp_path, monkeypatch):
 
 
 def test_multi_country_location_filter(tmp_path):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     rows = [{"kind": "founder", "dedup_key": f"co:{d}", "company": d, "domain": d, "locations": loc, "region": "europe", "score": 10}
             for d, loc in (("a.no", ["Oslo, Norway"]), ("b.se", ["Stockholm, Sweden"]), ("c.de", ["Berlin, Germany"]), ("d.uk", ["London"]))]
-    leads_store.upsert_leads(conn, rows)
-    got = lambda loc: sorted(l["domain"] for l in leads_store.pick_new(conn, limit=10, location=loc))
+    career.upsert_leads(conn, rows)
+    got = lambda loc: sorted(l["domain"] for l in career.pick_new_leads(conn, limit=10, location=loc))
     assert got("Norway, Sweden") == ["a.no", "b.se"]
     assert got("United Kingdom") == ["d.uk"]
     assert got("Germany") == ["c.de"]
 
 
 def test_location_search_resumes_from_saved_cursor(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     calls = []
 
     def fake_search(api_key, location, min_team, max_team, limit=50, cursor=None):

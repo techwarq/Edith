@@ -4,15 +4,14 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from edith.memory import db
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.storage import sqlite
 from edith.startup_finder import api, finder
 
 TOKEN = "t"
 
 
 def _client(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     settings = SimpleNamespace(hunter_api_key="", crustdata_api_key="", gemini_grounding_model="m")
     monkeypatch.setattr(finder, "crawl", lambda on_progress=None: ([
         {"kind": "founder", "dedup_key": f"co:{i}.ai", "company": f"Co{i}", "domain": f"{i}.ai", "region": "europe",
@@ -54,7 +53,7 @@ def test_list_and_patch_lead(tmp_path, monkeypatch):
 
 
 def test_run_without_crustdata_uses_only_vc_sources(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     settings = SimpleNamespace(hunter_api_key="", crustdata_api_key="key", gemini_grounding_model="m")
     rows = [{"kind": "founder", "dedup_key": f"co:c{i}.ai", "company": f"Crust{i}", "domain": f"c{i}.ai", "region": "europe",
              "description": "AI video", "team_size": 20, "source": "crustdata", "fund": "Crustdata"} for i in range(5)]

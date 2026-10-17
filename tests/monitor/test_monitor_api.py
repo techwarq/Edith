@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from edith.config import Settings
-from edith.memory import db, ideas_bugs_store, store
+from edith.memory.brain import notes
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 from edith.monitor import api as monitor_api
 from edith.monitor import dodo, github_shipping, vercel_analytics
 from edith.tools.ops.monitor import SHIPPING_ACCOUNT_CATEGORY, SHIPPING_REPO_CATEGORY, VERCEL_PROJECT_CATEGORY
@@ -57,7 +59,7 @@ def _settings(tmp_path, **overrides):
 
 
 def _client(tmp_path, **settings_overrides):
-    conn = db.connect(tmp_path / "test.db")
+    conn = sqlite.connect(tmp_path / "test.db")
     settings = _settings(tmp_path, **settings_overrides)
     router = monitor_api.build_router(conn, settings, genai_client=object(), api_token=TOKEN)
     app = FastAPI()
@@ -114,8 +116,8 @@ def test_analytics_not_configured_when_token_set_but_no_projects_tracked(tmp_pat
 
 def test_analytics_returns_one_tile_per_tracked_project(tmp_path, monkeypatch):
     client, conn = _client(tmp_path, vercel_analytics_token="tok")
-    store.save_fact(conn, key="prj_snips", value="Snips", category=VERCEL_PROJECT_CATEGORY)
-    store.save_fact(conn, key="prj_allore", value="Allore AI", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_snips", value="Snips", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_allore", value="Allore AI", category=VERCEL_PROJECT_CATEGORY)
 
     def fake_pageviews(token, project_id, team_id, days):
         return {"configured": True, "pageviews": 100 if project_id == "prj_snips" else 200, "days": days}
@@ -132,8 +134,8 @@ def test_analytics_returns_one_tile_per_tracked_project(tmp_path, monkeypatch):
 
 def test_analytics_one_project_erroring_does_not_break_the_others(tmp_path, monkeypatch):
     client, conn = _client(tmp_path, vercel_analytics_token="tok")
-    store.save_fact(conn, key="prj_good", value="Good", category=VERCEL_PROJECT_CATEGORY)
-    store.save_fact(conn, key="prj_bad", value="Bad", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_good", value="Good", category=VERCEL_PROJECT_CATEGORY)
+    system.set_setting(conn, key="prj_bad", value="Bad", category=VERCEL_PROJECT_CATEGORY)
 
     def fake_pageviews(token, project_id, team_id, days):
         if project_id == "prj_bad":
@@ -152,11 +154,11 @@ def test_analytics_projects_add_and_delete(tmp_path):
     client, conn = _client(tmp_path)
     add_resp = client.post("/api/monitor/analytics/projects", json={"token": TOKEN, "project_id": "prj_x", "label": "X"})
     assert add_resp.status_code == 200
-    assert store.get_facts_by_category(conn, VERCEL_PROJECT_CATEGORY) == [{"key": "prj_x", "value": "X", "category": VERCEL_PROJECT_CATEGORY}]
+    assert system.list_settings(conn, VERCEL_PROJECT_CATEGORY) == [{"key": "prj_x", "value": "X", "category": VERCEL_PROJECT_CATEGORY}]
 
     del_resp = client.post("/api/monitor/analytics/projects/delete", json={"token": TOKEN, "project_id": "prj_x"})
     assert del_resp.json() == {"ok": True}
-    assert store.get_facts_by_category(conn, VERCEL_PROJECT_CATEGORY) == []
+    assert system.list_settings(conn, VERCEL_PROJECT_CATEGORY) == []
 
 
 def test_shipping_not_configured_when_nothing_tracked(tmp_path):
@@ -169,32 +171,32 @@ def test_shipping_repos_add_and_delete(tmp_path):
     client, conn = _client(tmp_path)
     add_resp = client.post("/api/monitor/shipping/repos", json={"token": TOKEN, "repo": "techwarq/edith", "label": "Edith"})
     assert add_resp.status_code == 200
-    assert store.get_facts_by_category(conn, SHIPPING_REPO_CATEGORY) == [
+    assert system.list_settings(conn, SHIPPING_REPO_CATEGORY) == [
         {"key": "techwarq/edith", "value": "Edith", "category": SHIPPING_REPO_CATEGORY}
     ]
 
     del_resp = client.post("/api/monitor/shipping/repos/delete", json={"token": TOKEN, "repo": "techwarq/edith"})
     assert del_resp.json() == {"ok": True}
-    assert store.get_facts_by_category(conn, SHIPPING_REPO_CATEGORY) == []
+    assert system.list_settings(conn, SHIPPING_REPO_CATEGORY) == []
 
 
 def test_shipping_accounts_add_and_delete(tmp_path):
     client, conn = _client(tmp_path)
     add_resp = client.post("/api/monitor/shipping/accounts", json={"token": TOKEN, "username": "techwarq"})
     assert add_resp.status_code == 200
-    assert store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY) == [
+    assert system.list_settings(conn, SHIPPING_ACCOUNT_CATEGORY) == [
         {"key": "techwarq", "value": "techwarq", "category": SHIPPING_ACCOUNT_CATEGORY}
     ]
 
     del_resp = client.post("/api/monitor/shipping/accounts/delete", json={"token": TOKEN, "username": "techwarq"})
     assert del_resp.json() == {"ok": True}
-    assert store.get_facts_by_category(conn, SHIPPING_ACCOUNT_CATEGORY) == []
+    assert system.list_settings(conn, SHIPPING_ACCOUNT_CATEGORY) == []
 
 
 def test_shipping_combines_repo_and_account_commits(tmp_path, monkeypatch):
     client, conn = _client(tmp_path)
-    store.save_fact(conn, key="techwarq/edith", value="Edith", category=SHIPPING_REPO_CATEGORY)
-    store.save_fact(conn, key="techwarq", value="techwarq", category=SHIPPING_ACCOUNT_CATEGORY)
+    system.set_setting(conn, key="techwarq/edith", value="Edith", category=SHIPPING_REPO_CATEGORY)
+    system.set_setting(conn, key="techwarq", value="techwarq", category=SHIPPING_ACCOUNT_CATEGORY)
 
     monkeypatch.setattr(
         github_shipping,
@@ -215,12 +217,13 @@ def test_shipping_combines_repo_and_account_commits(tmp_path, monkeypatch):
 
 def test_social_summary(tmp_path):
     client, conn = _client(tmp_path)
-    store.save_fact(conn, key="niche", value="AI agents", category="content_strategy")
-    store.save_fact(conn, key="X voice", value="short and punchy", category=SOCIAL_SKILL_CATEGORY)
+    attrs = {"context": "Writes about AI agents.", "keywords": [], "tags": [], "region": "content strategy", "core": True}
+    note_id = notes.insert(conn, "niche: AI agents", attrs, "explicit", None, notes.now(conn))
+    system.set_setting(conn, key="X voice", value="short and punchy", category=SOCIAL_SKILL_CATEGORY)
 
     resp = client.get("/api/monitor/social", params={"token": TOKEN})
     body = resp.json()
-    assert body["content_strategy"] == [{"key": "niche", "value": "AI agents", "category": "content_strategy"}]
+    assert body["content_strategy"] == [{"key": f"#{note_id}", "value": "Writes about AI agents.", "category": "content strategy"}]
     assert body["skills"] == [{"title": "X voice", "preview": "short and punchy"}]
 
 

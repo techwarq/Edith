@@ -4,7 +4,6 @@
 
 import io
 import logging
-import sqlite3
 from typing import Callable
 
 from google.oauth2.credentials import Credentials
@@ -13,8 +12,8 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
 from edith.integrations.google.auth import get_credentials
-from edith.memory import store
-from edith.tools.registry import ToolRegistry
+from edith.memory.records import system
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.integrations.google.drive")
 
@@ -30,7 +29,10 @@ def _escape_query(query: str) -> str:
     return query.replace("\\", "\\\\").replace("'", "\\'")
 
 
+@tool
 def drive_search(query: str) -> str:
+    """Full-text search the user's Google Drive files by content or name.
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -57,7 +59,10 @@ def drive_search(query: str) -> str:
         return f"ERROR: Drive search failed: {e}"
 
 
+@tool
 def drive_read_file(file_id: str) -> str:
+    """Read the text content of a Drive file by id (from drive_search results). Google Docs/Sheets/Slides are exported as plain text.
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -97,68 +102,19 @@ def execute_create_drive_file(creds: Credentials | None, args: dict) -> str:
 EXECUTORS: dict[str, Callable[[Credentials, dict], str]] = {"create_drive_file": execute_create_drive_file}
 
 
-def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
-    def create_drive_file(name: str, content: str, mime_type: str = "text/plain") -> str:
-        action_id = store.queue_pending_action(
-            conn,
-            tool_name="create_drive_file",
-            args={"name": name, "content": content, "mime_type": mime_type},
-            preview=f"Create Drive file '{name}' ({mime_type})\n\n{content[:500]}",
-        )
-        return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's created."
+@tool
+def create_drive_file(ctx: ToolContext, name: str, content: str, mime_type: str = "text/plain") -> str:
+    """Propose creating a new plain text/markdown file in the user's Drive.
+    This does NOT create it immediately — it queues the file for the user's
+    review. Tell the user to run /approve to confirm before it's created.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "drive_search",
-                "description": "Full-text search the user's Google Drive files by content or name.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string"}},
-                    "required": ["query"],
-                },
-            },
-        },
-        drive_search,
+    Args:
+        mime_type: Defaults to text/plain
+    """
+    action_id = system.queue_pending_action(
+        ctx.conn,
+        tool_name="create_drive_file",
+        args={"name": name, "content": content, "mime_type": mime_type},
+        preview=f"Create Drive file '{name}' ({mime_type})\n\n{content[:500]}",
     )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "drive_read_file",
-                "description": "Read the text content of a Drive file by id (from drive_search results). Google Docs/Sheets/Slides are exported as plain text.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"file_id": {"type": "string"}},
-                    "required": ["file_id"],
-                },
-            },
-        },
-        drive_read_file,
-    )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "create_drive_file",
-                "description": (
-                    "Propose creating a new plain text/markdown file in the user's Drive. "
-                    "This does NOT create it immediately — it queues the file for the user's "
-                    "review. Tell the user to run /approve to confirm before it's created."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "content": {"type": "string"},
-                        "mime_type": {"type": "string", "description": "Defaults to text/plain"},
-                    },
-                    "required": ["name", "content"],
-                },
-            },
-        },
-        create_drive_file,
-    )
+    return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it's created."

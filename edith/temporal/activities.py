@@ -14,7 +14,8 @@ from temporalio import activity
 from edith.agent import Agent
 from edith.config import Settings, load_settings
 from edith.llm.client import make_client
-from edith.memory import db, store, vectors
+from edith.memory import conversation
+from edith.memory.storage import qdrant, sqlite
 from edith.integrations import push
 
 logger = logging.getLogger("edith.temporal.activities")
@@ -35,14 +36,14 @@ def _get_agent() -> tuple[Agent, str]:
         from edith.bootstrap import build_registry  # deferred: bootstrap -> tools.scheduling -> temporal.* -> here is a cycle at module-import time
 
         _settings = load_settings()
-        _conn = db.connect(_settings.db_path)
+        _conn = sqlite.connect(_settings.db_path)
         _client = make_client(_settings.api_key)  # OpenRouter — Agent's tool-calling loop
         genai_client = genai.Client(api_key=_settings.gemini_api_key)  # Gemini native SDK — web_search grounding, embeddings
-        qdrant_client = vectors.make_qdrant_client(_settings.qdrant_url, _settings.qdrant_api_key)
-        vectors.ensure_collection(qdrant_client)
-        registry = build_registry(_conn, genai_client, _settings.gemini_grounding_model, qdrant_client, _settings)
-        _agent = Agent(_conn, _client, _settings.model, registry, qdrant_client, genai_client)
-        _jobs_session_id = store.get_or_create_jobs_session(_conn, _settings.model)
+        qdrant_client = qdrant.make_qdrant_client(_settings.qdrant_url, _settings.qdrant_api_key)
+        qdrant.ensure_collection(qdrant_client)
+        registry = build_registry(_conn, _client, genai_client, _settings.gemini_grounding_model, qdrant_client, _settings)
+        _agent = Agent(_conn, _client, _settings.model, registry, registry.ctx.brain)
+        _jobs_session_id = conversation.get_or_create_jobs_session(_conn, _settings.model)
     return _agent, _jobs_session_id
 
 

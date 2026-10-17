@@ -8,13 +8,15 @@ import pytest
 from edith.integrations.google import calendar as gcalendar
 from edith.integrations.google import drive as gdrive
 from edith.integrations.google import gmail as ggmail
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
@@ -91,11 +93,11 @@ def test_gmail_search_formats_results(monkeypatch):
 
 
 def test_send_email_propose_queues_pending_action(conn):
-    registry = ToolRegistry()
-    ggmail.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(ggmail)
     result = registry.dispatch("send_email", {"to": "x@y.com", "subject": "hi", "body": "hello"})
     assert "Queued as action #" in result
-    pending = store.get_pending_actions(conn)
+    pending = system.get_pending_actions(conn)
     assert len(pending) == 1
     assert pending[0]["tool_name"] == "send_email"
     assert pending[0]["args"] == {"to": "x@y.com", "subject": "hi", "body": "hello"}
@@ -159,11 +161,11 @@ def test_drive_search_formats_results(monkeypatch):
 
 
 def test_create_drive_file_propose_queues_pending_action(conn):
-    registry = ToolRegistry()
-    gdrive.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(gdrive)
     result = registry.dispatch("create_drive_file", {"name": "test.txt", "content": "hello"})
     assert "Queued as action #" in result
-    pending = store.get_pending_actions(conn)
+    pending = system.get_pending_actions(conn)
     assert pending[0]["tool_name"] == "create_drive_file"
     assert pending[0]["args"]["name"] == "test.txt"
 
@@ -222,14 +224,14 @@ def test_calendar_list_events_formats_results(monkeypatch):
 
 
 def test_create_calendar_event_propose_queues_pending_action(conn):
-    registry = ToolRegistry()
-    gcalendar.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(gcalendar)
     result = registry.dispatch(
         "create_calendar_event",
         {"summary": "Meeting", "start_iso": "2026-01-01T10:00:00Z", "end_iso": "2026-01-01T11:00:00Z"},
     )
     assert "Queued as action #" in result
-    pending = store.get_pending_actions(conn)
+    pending = system.get_pending_actions(conn)
     assert pending[0]["tool_name"] == "create_calendar_event"
     assert pending[0]["args"]["summary"] == "Meeting"
 

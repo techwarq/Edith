@@ -8,7 +8,7 @@ import logging
 from google import genai
 from google.genai import types
 
-from edith.tools.registry import ToolRegistry
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.tools.news")
 
@@ -35,26 +35,14 @@ def fetch_news(client: genai.Client, model: str, topic: str = "") -> str:
         return f"ERROR: news fetch failed: {e}"
 
 
-def register(registry: ToolRegistry, client: genai.Client, model: str) -> None:
-    def get_news(topic: str = "") -> str:
-        return fetch_news(client, model, topic)
+@tool
+def get_news(ctx: ToolContext, topic: str = "") -> str:
+    """Fetch recent news headlines, optionally scoped to a topic (e.g. 'startup',
+    'aviation'). Call this when the user says 'news' or asks what's happening in a
+    space — if they don't name a topic, check their saved facts/preferences first for
+    one before asking them or calling with no topic.
 
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "get_news",
-                "description": (
-                    "Fetch recent news headlines, optionally scoped to a topic (e.g. 'startup', "
-                    "'aviation'). Call this when the user says 'news' or asks what's happening in a "
-                    "space — if they don't name a topic, check their saved facts/preferences first for "
-                    "one before asking them or calling with no topic."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {"topic": {"type": "string", "description": "Optional topic to scope the news to"}},
-                },
-            },
-        },
-        get_news,
-    )
+    Args:
+        topic: Optional topic to scope the news to
+    """
+    return fetch_news(ctx.genai_client, ctx.genai_model, topic)

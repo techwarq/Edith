@@ -19,8 +19,9 @@ from edith.bootstrap import EXECUTORS
 from edith.config import Settings
 from edith.integrations.google import auth as google_auth
 from edith.integrations.google.auth import GoogleAuthError
-from edith.memory import search as memory_search
-from edith.memory import store
+from edith.memory import conversation
+from edith.memory.brain import notes
+from edith.memory.records import system
 from edith.tools.productivity.projects import WORKING_ON_CATEGORY
 from edith.integrations import whatsapp
 from edith.integrations.whatsapp import WhatsAppError
@@ -46,9 +47,9 @@ def handle_command(
         if not arg:
             return session_id, voice_enabled, "Usage: /afame <fact about you>, e.g. /afame I work as a PM at Allore"
         directive = (
-            f"Save this as a fact about me using save_fact or update_fact right now "
+            f"Remember this about me using the remember tool right now "
             f"(don't just chat about it, actually call the tool), then briefly confirm "
-            f"what you saved: {arg}"
+            f"what you stored: {arg}"
         )
         reply = agent.handle_turn(session_id, directive)
         return session_id, voice_enabled, reply
@@ -67,9 +68,8 @@ def handle_command(
             "you can act as their X/Instagram growth assistant going forward: proposing post and "
             "video ideas, and helping them stay consistent. If anything important is unclear — their "
             "niche/expertise, target platforms, voice/tone, content pillars, or a growth/posting-"
-            "cadence goal — ask a brief follow-up before saving. Otherwise, save each distinct thing "
-            "you learn as its own durable fact via save_fact with category='content_strategy' (don't "
-            "bundle everything into one fact). If they state a concrete growth or consistency goal "
+            "cadence goal — ask a brief follow-up before saving. Otherwise, call remember once per distinct "
+            "thing you learn, with region='content strategy' (don't bundle everything into one memory). If they state a concrete growth or consistency goal "
             "(e.g. 'post 3x/week', 'grow to 10k followers by December'), also call create_goal for it. "
             "If they're sharing actual reference material (a writing sample, a style guide, past post "
             "examples) rather than describing intent, use save_social_skill instead. Then briefly "
@@ -107,7 +107,7 @@ def handle_command(
         target_status = "approved" if cmd == "/approve" else "rejected"
 
         if not arg.strip():
-            pending = store.get_pending_actions(conn, status="pending")
+            pending = system.get_pending_actions(conn, status="pending")
             if not pending:
                 return session_id, voice_enabled, "No pending actions."
             lines = [f"#{a['id']} ({a['tool_name']}): {a['preview']}" for a in pending]
@@ -119,7 +119,7 @@ def handle_command(
         except ValueError:
             return session_id, voice_enabled, f"Usage: {cmd} <id> (a number from the pending list)"
 
-        resolved = store.resolve_pending_action(conn, action_id, target_status)
+        resolved = system.resolve_pending_action(conn, action_id, target_status)
         if resolved is None:
             return session_id, voice_enabled, f"No pending action with id {action_id}."
         if target_status == "rejected":
@@ -133,19 +133,21 @@ def handle_command(
         return session_id, voice_enabled, result
 
     if cmd == "/new":
-        store.end_session(conn, session_id)
-        new_id = store.create_session(conn, settings.model)
+        conversation.end_session(conn, session_id)
+        new_id = conversation.create_session(conn, settings.model)
         return new_id, voice_enabled, f"Started a new session ({new_id[:8]})."
 
     if cmd == "/facts":
-        facts = store.get_all_facts(conn)
-        if not facts:
-            return session_id, voice_enabled, "No facts stored yet."
-        lines = [f"[{f['category']}] {f['key']}: {f['value']}" if f["category"] else f"{f['key']}: {f['value']}" for f in facts]
+        core = notes.core(conn)
+        regions = notes.regions(conn)
+        if not regions:
+            return session_id, voice_enabled, "Nothing remembered yet."
+        lines = [f"#{n['id']} [{n['region']}] {n['context']}" for n in core] or ["(no core memories yet)"]
+        lines.append("Regions: " + ", ".join(f"{name} ({n})" for name, n in regions))
         return session_id, voice_enabled, "\n".join(lines)
 
     if cmd == "/working-on":
-        facts = store.get_facts_by_category(conn, WORKING_ON_CATEGORY)
+        facts = system.list_settings(conn, WORKING_ON_CATEGORY)
         if not facts:
             return session_id, voice_enabled, "Nothing tracked yet — tell me what you're working on and I'll remember it."
         lines = [f"{f['key']}: {f['value']}" for f in facts]
@@ -158,8 +160,8 @@ def handle_command(
                 limit = int(arg.strip())
             except ValueError:
                 return session_id, voice_enabled, "Usage: /jobs [count]"
-        jobs_session_id = store.get_or_create_jobs_session(conn, settings.model)
-        replies = store.get_recent_assistant_replies(conn, jobs_session_id, limit)
+        jobs_session_id = conversation.get_or_create_jobs_session(conn, settings.model)
+        replies = conversation.get_recent_assistant_replies(conn, jobs_session_id, limit)
         if not replies:
             return session_id, voice_enabled, "No scheduled job output yet."
         lines = [f"--- [{r['created_at']}] ---\n{r['content']}" for r in replies]
@@ -168,7 +170,7 @@ def handle_command(
     if cmd == "/history":
         if not arg:
             return session_id, voice_enabled, "Usage: /history <query>"
-        results = memory_search.search_history(conn, arg)
+        results = conversation.search_history(conn, arg)
         if not results:
             return session_id, voice_enabled, "No matching past messages found."
         lines = [f"[{r['created_at']}] {r['role']}: {r['content']}" for r in results]

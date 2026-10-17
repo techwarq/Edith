@@ -8,9 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-from edith.memory import job_applications_store as jobs_store
-from edith.memory import startup_leads_store as leads_store
-from edith.memory import store
+from edith.memory.records import career, system
 from edith.startup_finder import apollo, crustdata, email_draft, prospeo, qualify, site_emails, sources, visa
 
 logger = logging.getLogger("edith.startup_finder")
@@ -113,7 +111,7 @@ def qualify_all(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _crawl_is_fresh(conn: sqlite3.Connection) -> bool:
-    last = store.get_meta(conn, LAST_CRAWL_KEY)
+    last = system.get_setting(conn, LAST_CRAWL_KEY)
     if not last:
         return False
     try:
@@ -202,7 +200,7 @@ def portfolio_sources(conn: sqlite3.Connection, genai_client: Any, model: str) -
     def one(item: tuple[str, tuple[str, Optional[str]]]) -> tuple[str, list[dict[str, Any]], Optional[str]]:
         fund, (url, default_region) = item
         key = f"startup_finder_portfolio:{fund}"
-        cached = store.get_meta(conn, key)
+        cached = system.get_setting(conn, key)
         companies = None
         if cached:
             try:
@@ -222,7 +220,7 @@ def portfolio_sources(conn: sqlite3.Connection, genai_client: Any, model: str) -
         except Exception as e:
             return fund, [], str(e)[:200]
         if companies:
-            store.set_meta(conn, key, json.dumps({"at": now.isoformat(), "v": PORTFOLIO_VERSION, "companies": companies}))
+            system.set_setting(conn, key, json.dumps({"at": now.isoformat(), "v": PORTFOLIO_VERSION, "companies": companies}))
         return fund, _portfolio_leads(fund, companies, default_region), None
 
     leads: list[dict[str, Any]] = []
@@ -250,10 +248,10 @@ def refresh(
     report["raw"] = len(raw)
     qualified = qualify_all(raw)
     report["qualified"] = len(qualified)
-    report["new"] = leads_store.upsert_leads(conn, qualified)
+    report["new"] = career.upsert_leads(conn, qualified)
     if not report["errors"]:
-        report["pruned"] = leads_store.prune_new(conn, {l["dedup_key"] for l in qualified})
-    store.set_meta(conn, LAST_CRAWL_KEY, datetime.now(timezone.utc).isoformat())
+        report["pruned"] = career.prune_new_leads(conn, {l["dedup_key"] for l in qualified})
+    system.set_setting(conn, LAST_CRAWL_KEY, datetime.now(timezone.utc).isoformat())
     return report
 
 
@@ -268,17 +266,17 @@ SEARCH_PAGES = 4
 def crustdata_location_leads(
     conn: sqlite3.Connection, api_key: str, location: str, min_team: Optional[int], max_team: Optional[int], need: int,
 ) -> dict[str, Any]:
-    known = leads_store.known_keys(conn)
+    known = career.known_lead_keys(conn)
     cursor_key = f"{LOCATION_CURSOR_KEY}{location.lower()}|{min_team or ''}|{max_team or ''}"
-    added, seen, cursor = 0, 0, store.get_meta(conn, cursor_key) or None
+    added, seen, cursor = 0, 0, system.get_setting(conn, cursor_key) or None
     for _ in range(SEARCH_PAGES):
         try:
             rows, cursor = crustdata.search_companies(api_key, location, min_team, max_team, limit=50, cursor=cursor)
         except crustdata.CrustdataError as e:
             logger.warning("crustdata search failed for %s: %s", location, e)
-            store.set_meta(conn, cursor_key, "")
+            system.set_setting(conn, cursor_key, "")
             return {"added": added, "seen": seen, "error": str(e)[:200]}
-        store.set_meta(conn, cursor_key, cursor or "")
+        system.set_setting(conn, cursor_key, cursor or "")
         seen += len(rows)
         fresh = []
         for lead in rows:
@@ -290,7 +288,7 @@ def crustdata_location_leads(
             lead["funded"], lead["funding"] = True, info.get("last_round") or ""
             if (scored := qualify.score(lead)) is not None:
                 fresh.append(scored)
-        added += leads_store.upsert_leads(conn, fresh)
+        added += career.upsert_leads(conn, fresh)
         if added >= need or not cursor:
             break
     return {"added": added, "seen": seen}
@@ -309,10 +307,10 @@ def _select(
     visa_paths: Optional[list[str]] = None,
     exclude_sources: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    skip_domains = leads_store.contacted_domains(conn)
-    skip_names = {company_key(n) for n in leads_store.used_company_names(conn)}
+    skip_domains = career.contacted_domains(conn)
+    skip_names = {company_key(n) for n in career.used_company_names(conn)}
     exclude = exclude or set()
-    pool = leads_store.pick_new(
+    pool = career.pick_new_leads(
         conn, limit=count * 12 + len(exclude), kind=kind, location=location,
         max_team=max_team, min_team=min_team, allow_unknown_team=allow_unknown_team, visa=visa_paths,
         exclude_sources=exclude_sources,
@@ -426,10 +424,10 @@ def _enrich_batch(conn: sqlite3.Connection, api_key: str, leads: list[dict[str, 
     for lead in todo:
         if lead.get("company_info"):
             lead["company_info"]["people_checked"] = True
-            leads_store.set_contacts(conn, lead["id"], lead.get("founders"), lead.get("contact_email"))
-            leads_store.set_company_info(conn, lead["id"], lead["company_info"], lead.get("team_size"), lead.get("stage"))
+            career.set_lead_contacts(conn, lead["id"], lead.get("founders"), lead.get("contact_email"))
+            career.set_lead_company_info(conn, lead["id"], lead["company_info"], lead.get("team_size"), lead.get("stage"))
             if lead.get("region"):
-                leads_store.set_region(conn, lead["id"], lead["region"])
+                career.set_lead_region(conn, lead["id"], lead["region"])
 
 
 def _team_ok(lead: dict[str, Any], min_team: Optional[int], max_team: Optional[int], allow_unknown: bool = False) -> bool:
@@ -480,11 +478,11 @@ def _screen(
         for lead in batch:
             hq_known = bool((lead.get("company_info") or {}).get("hq"))
             if hq_known and lead.get("region") not in qualify.TARGET_REGIONS:
-                leads_store.update_status(conn, lead["id"], "skipped")
+                career.update_lead_status(conn, lead["id"], "skipped")
             elif _team_ok(lead, min_team, max_team, allow_unknown=not crustdata_api_key):
                 sized.append(lead)
             else:
-                leads_store.update_status(conn, lead["id"], "skipped")
+                career.update_lead_status(conn, lead["id"], "skipped")
         batch = sized
         if not batch:
             continue
@@ -505,19 +503,19 @@ def _screen(
                 continue
             fit, why, hq, funded, ai = verdicts[lead["id"]]
             if lead.get("source") not in qualify.VC_SOURCES + ("thehub",) and funded != "yes" and not _crust_funded(lead):
-                leads_store.update_status(conn, lead["id"], "skipped")
+                career.update_lead_status(conn, lead["id"], "skipped")
                 continue
             if require_ai and ai == "no":
-                leads_store.update_status(conn, lead["id"], "skipped")
+                career.update_lead_status(conn, lead["id"], "skipped")
                 continue
             if lead.get("region") not in qualify.TARGET_REGIONS:
                 if hq not in qualify.TARGET_REGIONS:
-                    leads_store.update_status(conn, lead["id"], "skipped")
+                    career.update_lead_status(conn, lead["id"], "skipped")
                     continue
                 lead["region"] = hq
-                leads_store.set_region(conn, lead["id"], hq)
+                career.set_lead_region(conn, lead["id"], hq)
             if fit < FIT_THRESHOLD:
-                leads_store.update_status(conn, lead["id"], "skipped")
+                career.update_lead_status(conn, lead["id"], "skipped")
                 continue
             key = (lead.get("domain") or lead["company"]).lower()
             name_key = f"name:{company_key(lead['company'])}"
@@ -767,14 +765,14 @@ def find(
 ) -> dict[str, Any]:
     count = max(1, min(int(count), 50))
     report: dict[str, Any] = {}
-    if force_refresh or not _crawl_is_fresh(conn) or leads_store.count_new(conn) < count * 2:
+    if force_refresh or not _crawl_is_fresh(conn) or career.count_new_leads(conn) < count * 2:
         report = refresh(conn, on_progress, genai_client, model)
     if visa_paths:
         if on_progress:
             on_progress("Checking visa sponsor registers…")
         visa.backfill(conn)
     if location and crustdata_api_key:
-        pool = len(leads_store.pick_new(conn, limit=count * 3, kind=kind, location=location, max_team=max_team,
+        pool = len(career.pick_new_leads(conn, limit=count * 3, kind=kind, location=location, max_team=max_team,
                                         min_team=min_team, allow_unknown_team=True, visa=visa_paths,
                                         exclude_sources=exclude_sources))
         if pool < count * 3:
@@ -783,7 +781,7 @@ def find(
             report["crustdata_search"] = crustdata_location_leads(
                 conn, crustdata_api_key, location, min_team, max_team, need=count * 3 - pool)
 
-    profile = jobs_store.get_resume_text(conn) or FALLBACK_PROFILE
+    profile = career.get_resume_text(conn) or FALLBACK_PROFILE
     if genai_client is not None:
         if on_progress:
             on_progress("Checking size, funding and fit…")
@@ -809,7 +807,7 @@ def find(
         draft_for(lead, like, projects, focus)
         lead["status"] = "delivered"
         lead.pop("_jd", None)
-        leads_store.mark_delivered(
+        career.mark_lead_delivered(
             conn, lead["id"], founders=lead.get("founders"), contact_email=lead.get("contact_email"),
             pitch=lead.get("pitch"), reasons=lead.get("reasons"), company_info=lead.get("company_info"),
             team_size=lead.get("team_size"), stage=lead.get("stage"),
@@ -820,10 +818,10 @@ def find(
         "requested": count,
         "returned": len(picked),
         "leads": picked,
-        "remaining_pool": leads_store.count_new(conn),
+        "remaining_pool": career.count_new_leads(conn),
         "by_source": dict(Counter(l.get("fund") or l.get("source") or "unknown" for l in picked)),
         "crawl": report or None,
-        "stats": leads_store.stats(conn),
+        "stats": career.lead_stats(conn),
         "warnings": quota_warnings(),
     }
 
@@ -837,7 +835,7 @@ def draft_lead(
     conn: sqlite3.Connection, lead_id: int, genai_client: Any, model: str,
     hunter_api_key: str = "", crustdata_api_key: str = "", apollo_api_key: str = "", prospeo_api_key: str = "",
 ) -> Optional[dict[str, Any]]:
-    lead = leads_store.get_lead(conn, lead_id)
+    lead = career.get_lead(conn, lead_id)
     if lead is None:
         return None
     if crustdata_api_key and lead.get("domain") and not lead.get("company_info"):
@@ -845,13 +843,13 @@ def draft_lead(
     QUOTA_HIT.clear()
     if email_draft.pick_recipient(lead) is None:
         _find_contacts(lead, hunter_api_key, apollo_api_key, prospeo_api_key)
-    leads_store.set_contacts(conn, lead_id, lead.get("founders"), lead.get("contact_email"))
+    career.set_lead_contacts(conn, lead_id, lead.get("founders"), lead.get("contact_email"))
     visa.apply(conn, lead)
-    profile = jobs_store.get_resume_text(conn) or FALLBACK_PROFILE
+    profile = career.get_resume_text(conn) or FALLBACK_PROFILE
     like, projects, focus = email_draft.personalize(genai_client, model, profile, [lead]).get(lead_id, ("", "", ""))
     draft = draft_for(lead, like, projects, focus)
-    leads_store.save_draft(conn, lead_id, draft["to"], draft["subject"], draft["body"])
-    out = leads_store.get_lead(conn, lead_id)
+    career.save_lead_draft(conn, lead_id, draft["to"], draft["subject"], draft["body"])
+    out = career.get_lead(conn, lead_id)
     if out is not None:
         out["warnings"] = quota_warnings()
     return out

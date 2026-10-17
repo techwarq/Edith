@@ -1,21 +1,22 @@
 import pytest
 
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.tools.ops import tracking
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
 @pytest.fixture
 def registry(conn):
-    r = ToolRegistry()
-    tracking.register(r, conn)
+    r = ToolRegistry(ToolContext(conn=conn))
+    r.register_module(tracking)
     return r
 
 

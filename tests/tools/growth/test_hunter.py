@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from edith.tools.growth import hunter
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
@@ -15,14 +16,14 @@ def _fake_response(json_data, status_code=200):
 
 def _registry(monkeypatch, response, settings=None):
     monkeypatch.setattr(hunter.requests, "get", lambda *a, **k: response)
-    r = ToolRegistry()
-    hunter.register(r, settings or _FakeSettings())
+    r = ToolRegistry(ToolContext(settings=settings or _FakeSettings()))
+    r.register_module(hunter)
     return r
 
 
 def test_missing_api_key_returns_error():
-    r = ToolRegistry()
-    hunter.register(r, _FakeSettings(key=""))
+    r = ToolRegistry(ToolContext(settings=_FakeSettings(key="")))
+    r.register_module(hunter)
 
     result = r.dispatch("hunter_domain_search", {"domain": "stripe.com", "limit": 10})
 
@@ -147,8 +148,8 @@ def test_network_error_returns_error_string(monkeypatch):
         raise real_requests.exceptions.ConnectionError("boom")
 
     monkeypatch.setattr(hunter.requests, "get", _raise)
-    r = ToolRegistry()
-    hunter.register(r, _FakeSettings())
+    r = ToolRegistry(ToolContext(settings=_FakeSettings()))
+    r.register_module(hunter)
 
     result = r.dispatch("hunter_email_verifier", {"email": "x@y.com"})
 

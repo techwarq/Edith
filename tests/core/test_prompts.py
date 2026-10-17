@@ -1,27 +1,23 @@
 from edith.prompts import build_system_prompt
 
 
-def test_behavior_facts_go_in_dedicated_section():
-    facts = [
-        {"key": "current_role", "value": "PM at Allore", "category": "identity"},
-        {"key": "tone_pref", "value": "be concise, no fluff", "category": "behavior"},
-    ]
-    prompt = build_system_prompt(facts)
-
-    goals_section, profile_section = prompt.split("## What you know about the user so far")
-    assert "tone_pref: be concise, no fluff" in goals_section
-    assert "current_role: PM at Allore" not in goals_section
-    assert "current_role: PM at Allore" in profile_section
+def _note(context, region, id=1):
+    return {"id": id, "context": context, "region": region, "created_at": "2026-10-17T00:00:00Z"}
 
 
-def test_category_goal_facts_now_go_in_profile_section_not_goals():
-    # Real goals live in the structured goals table (create_goal) now, surfaced
-    # via the `goals` param below — category="goal" on save_fact is legacy/
-    # discouraged, so any stray fact still tagged that way just falls through
-    # to the generic profile section rather than being dropped or duplicated.
-    facts = [{"key": "old_style_goal", "value": "switch into ML engineering", "category": "goal"}]
-    prompt = build_system_prompt(facts)
-    assert "old_style_goal: switch into ML engineering" in prompt.split("## What you know about the user so far")[1]
+def test_core_memories_are_grouped_by_region():
+    core = [_note("Works as a PM at Allore.", "career"), _note("Wants concise answers.", "preferences", 2)]
+    prompt = build_system_prompt(core)
+
+    section = prompt.split("## What you know about the user (core memories, by region)")[1].split("##")[0]
+    assert "- career:\n  - Works as a PM at Allore." in section
+    assert "- preferences:\n  - Wants concise answers." in section
+
+
+def test_recalled_memories_render_with_ids():
+    recalled = [{**_note("Training for a half marathon.", "health", 7), "score": 0.81}]
+    prompt = build_system_prompt([], memories=recalled)
+    assert "#7 [health, 2026-10-17, match 0.81] Training for a half marathon." in prompt
 
 
 def test_active_structured_goals_appear_in_goals_section():
@@ -30,7 +26,7 @@ def test_active_structured_goals_appear_in_goals_section():
         {"title": "Dropped goal", "status": "dropped", "target_date": None, "milestones": []},
     ]
     prompt = build_system_prompt([], goals)
-    goals_section = prompt.split("## What you know about the user so far")[0]
+    goals_section = prompt.split("## What you know about the user")[0]
     assert "Switch into ML engineering (1/2 milestones) — due 2026-12-31" in goals_section
     assert "Dropped goal" not in goals_section
 
@@ -38,10 +34,5 @@ def test_active_structured_goals_appear_in_goals_section():
 def test_empty_sections_render_placeholder_text():
     prompt = build_system_prompt([])
     assert "(Nothing set yet.)" in prompt
-    assert "(No facts learned yet.)" in prompt
-
-
-def test_facts_without_category_go_in_profile_section():
-    facts = [{"key": "favorite_color", "value": "blue", "category": None}]
-    prompt = build_system_prompt(facts)
-    assert "favorite_color: blue" in prompt.split("## What you know about the user so far")[1]
+    assert "(Nothing yet — you're just getting to know them.)" in prompt
+    assert "(None recalled for this message.)" in prompt

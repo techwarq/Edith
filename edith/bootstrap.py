@@ -16,7 +16,9 @@ from edith.integrations.google import docs_sheets as google_docs_sheets
 from edith.integrations.google import drive as google_drive
 from edith.integrations.google import gmail as google_gmail
 from edith.llm.client import make_client
-from edith.memory import db, store, vectors
+from edith.memory import conversation
+from edith.memory.brain import Brain
+from edith.memory.storage import qdrant, sqlite
 from edith.tools.growth import hunter as hunter_tool
 from edith.tools.growth import job_applications as job_applications_tool
 from edith.tools.growth import outreach as outreach_tool
@@ -40,6 +42,7 @@ from edith.tools.system import computer_use as computer_use_tool
 from edith.tools.system import mcp_client
 from edith.tools.system import notify
 from edith.tools.system import scheduling
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 from edith.integrations import whatsapp
 
@@ -66,6 +69,38 @@ EXECUTORS = {
 }
 
 
+TOOL_MODULES = (
+    notes,
+    web_search,
+    research_tool,
+    news_tool,
+    youtube_tool,
+    google_gmail,
+    google_drive,
+    google_calendar,
+    google_docs_sheets,
+    whatsapp,
+    health_tool,
+    browse,
+    tracking,
+    social_tool,
+    monitor_tool,
+    scheduling,
+    notify,
+    monid_tool,
+    goals_tool,
+    todos_tool,
+    hunter_tool,
+    job_applications_tool,
+    outreach_tool,
+    startup_finder_tool,
+    projects_tool,
+    github_tool,
+    vercel_tool,
+    computer_use_tool,
+)
+
+
 @dataclass
 class AppContext:
     conn: sqlite3.Connection
@@ -79,65 +114,52 @@ class AppContext:
 
 def build_registry(
     conn: sqlite3.Connection,
+    client: openai.OpenAI,
     genai_client: genai.Client,
     model: str,
     qdrant_client: QdrantClient | None,
     settings: Settings,
 ) -> ToolRegistry:
-    registry = ToolRegistry()
-    notes.register(registry, conn, qdrant_client, genai_client)
-    web_search.register(registry, genai_client, model, qdrant_client)
-    research_tool.register(registry, genai_client, model, qdrant_client)
-    news_tool.register(registry, genai_client, model)
-    youtube_tool.register(registry, genai_client, model)
-    google_gmail.register(registry, conn)
-    google_drive.register(registry, conn)
-    google_calendar.register(registry, conn)
-    google_docs_sheets.register(registry, conn)
-    whatsapp.register(registry, conn)
-    health_tool.register(registry, conn)
-    browse.register(registry, conn)
-    tracking.register(registry, conn)
-    social_tool.register(registry, conn, qdrant_client, genai_client)
-    monitor_tool.register(registry, conn)
-    scheduling.register(registry, settings)
-    notify.register(registry, conn, settings)
-    monid_tool.register(registry)
-    goals_tool.register(registry, conn)
-    todos_tool.register(registry, conn)
-    hunter_tool.register(registry, settings)
-    job_applications_tool.register(registry, conn, genai_client, model)
-    outreach_tool.register(registry, conn, genai_client, model)
-    startup_finder_tool.register(registry, conn, settings, genai_client, model)
-    projects_tool.register(registry, conn)
-    github_tool.register(registry, settings)
-    vercel_tool.register(registry, settings)
-    computer_use_tool.register(registry, settings)
+    registry = ToolRegistry(
+        ToolContext(
+            conn=conn,
+            settings=settings,
+            genai_client=genai_client,
+            llm_client=client,
+            genai_model=model,
+            qdrant_client=qdrant_client,
+            brain=Brain(conn, client, qdrant_client=qdrant_client),
+        )
+    )
+    job_applications_tool.seed_job_sources(conn)
+    for module in TOOL_MODULES:
+        registry.register_module(module)
     mcp_client.register_all(registry, conn)
     return registry
 
 
 def resolve_session(conn: sqlite3.Connection, model: str) -> tuple[str, bool]:
-    is_first_run = not store.any_session_exists(conn)
-    last_id = store.get_last_session_id(conn)
-    if last_id and store.session_exists(conn, last_id):
+    is_first_run = not conversation.any_session_exists(conn)
+    last_id = conversation.get_last_session_id(conn)
+    if last_id and conversation.session_exists(conn, last_id):
         return last_id, is_first_run
-    return store.create_session(conn, model), is_first_run
+    return conversation.create_session(conn, model), is_first_run
 
 
 def build_app_context(settings: Settings) -> AppContext:
     google_auth.write_credentials_from_env()
-    conn = db.connect(settings.db_path)
+    conn = sqlite.connect(settings.db_path)
     client = make_client(settings.api_key)
     genai_client = genai.Client(api_key=settings.gemini_api_key)
-    qdrant_client = vectors.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key)
+    qdrant_client = qdrant.make_qdrant_client(settings.qdrant_url, settings.qdrant_api_key)
     try:
-        vectors.ensure_collection(qdrant_client)
+        qdrant.ensure_collection(qdrant_client)
     except Exception:
         logging.getLogger("edith.bootstrap").exception("Qdrant unreachable — starting without semantic memory")
         qdrant_client = None
-    registry = build_registry(conn, genai_client, settings.gemini_grounding_model, qdrant_client, settings)
-    agent = Agent(conn, client, settings.model, registry, qdrant_client, genai_client)
+    registry = build_registry(conn, client, genai_client, settings.gemini_grounding_model, qdrant_client, settings)
+    agent = Agent(conn, client, settings.model, registry, registry.ctx.brain)
+    registry.ctx.brain.index_pending_later()
     return AppContext(
         conn=conn,
         client=client,

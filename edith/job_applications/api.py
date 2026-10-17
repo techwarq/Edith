@@ -18,8 +18,7 @@ from fastapi.responses import JSONResponse
 from edith.bootstrap import EXECUTORS
 from edith.config import JOBS_DAILY_CAP
 from edith.integrations.google import auth as google_auth
-from edith.memory import job_applications_store as jobs_store
-from edith.memory import store
+from edith.memory.records import career, system
 from edith.tools.growth.job_applications import AUTONOMOUS_KEY, JOBS_CONFIG_CATEGORY
 
 
@@ -35,46 +34,46 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
     async def list_job_applications(token: str = "", status: Optional[str] = None) -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        applications = await asyncio.to_thread(jobs_store.list_applications, conn, status)
+        applications = await asyncio.to_thread(career.list_applications, conn, status)
         return JSONResponse({"applications": applications})
 
     @router.get("/job-applications/{application_id}", response_model=None)
     async def get_job_application(application_id: int, token: str = "") -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        application = await asyncio.to_thread(jobs_store.get_application, conn, application_id)
+        application = await asyncio.to_thread(career.get_application, conn, application_id)
         if application is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse(application)
 
     def _resolve(application_id: int, target_status: str) -> Optional[dict]:
-        application = jobs_store.get_application(conn, application_id)
+        application = career.get_application(conn, application_id)
         if application is None or application.get("pending_action_id") is None:
             return None
 
-        resolved = store.resolve_pending_action(conn, application["pending_action_id"], target_status)
+        resolved = system.resolve_pending_action(conn, application["pending_action_id"], target_status)
         if resolved is None:
             return None
 
         if target_status == "rejected":
-            jobs_store.update_application(conn, application_id, status="failed", error="rejected by user")
-            return jobs_store.get_application(conn, application_id)
+            career.update_application(conn, application_id, status="failed", error="rejected by user")
+            return career.get_application(conn, application_id)
 
         executor = EXECUTORS.get(resolved["tool_name"])
         if executor is None:
-            jobs_store.update_application(conn, application_id, status="failed", error=f"no executor for {resolved['tool_name']}")
-            return jobs_store.get_application(conn, application_id)
+            career.update_application(conn, application_id, status="failed", error=f"no executor for {resolved['tool_name']}")
+            return career.get_application(conn, application_id)
 
         google_creds = google_auth.get_credentials()
         result = executor(google_creds, resolved["args"])
         ok = not result.startswith("ERROR")
         new_status = "sent" if resolved["tool_name"] == "send_email" else "applied"
-        jobs_store.update_application(
+        career.update_application(
             conn, application_id,
             status=new_status if ok else "failed",
             error=None if ok else result,
         )
-        return jobs_store.get_application(conn, application_id)
+        return career.get_application(conn, application_id)
 
     @router.post("/job-applications/{application_id}/approve", response_model=None)
     async def approve_job_application(application_id: int, request: Request) -> JSONResponse:
@@ -103,9 +102,9 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
 
         def _read() -> dict:
             return {
-                "autonomous_enabled": store.get_fact(conn, AUTONOMOUS_KEY) == "true",
+                "autonomous_enabled": system.get_setting(conn, AUTONOMOUS_KEY) == "true",
                 "daily_cap": JOBS_DAILY_CAP,
-                "sent_today": jobs_store.count_sent_today(conn),
+                "sent_today": career.count_sent_today(conn),
             }
 
         return JSONResponse(await asyncio.to_thread(_read))
@@ -119,14 +118,14 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
             return JSONResponse({"error": "autonomous_enabled is required"}, status_code=400)
 
         def _write() -> dict:
-            store.save_fact(
+            system.set_setting(
                 conn, key=AUTONOMOUS_KEY, value="true" if body["autonomous_enabled"] else "false",
                 category=JOBS_CONFIG_CATEGORY,
             )
             return {
-                "autonomous_enabled": store.get_fact(conn, AUTONOMOUS_KEY) == "true",
+                "autonomous_enabled": system.get_setting(conn, AUTONOMOUS_KEY) == "true",
                 "daily_cap": JOBS_DAILY_CAP,
-                "sent_today": jobs_store.count_sent_today(conn),
+                "sent_today": career.count_sent_today(conn),
             }
 
         return JSONResponse(await asyncio.to_thread(_write))

@@ -1,13 +1,16 @@
-"""CRUD for sessions/messages/user_profile; whole-turn-aware context trimming."""
+"""Working + episodic memory: sessions, messages, whole-turn context trimming, and
+FTS5 keyword search over all past messages."""
 
 import json
 import sqlite3
 import uuid
 from typing import Any, Optional
 
+from edith.memory.records import system
+
 
 # ---------------------------------------------------------------------------
-# sessions / meta
+# sessions
 # ---------------------------------------------------------------------------
 
 def create_session(conn: sqlite3.Connection, model: str) -> str:
@@ -15,25 +18,12 @@ def create_session(conn: sqlite3.Connection, model: str) -> str:
     conn.execute(
         "INSERT INTO sessions (id, model) VALUES (?, ?)", (session_id, model)
     )
-    set_meta(conn, "last_session_id", session_id)
+    system.set_setting(conn, "last_session_id", session_id)
     return session_id
 
 
 def get_last_session_id(conn: sqlite3.Connection) -> Optional[str]:
-    return get_meta(conn, "last_session_id")
-
-
-def get_meta(conn: sqlite3.Connection, key: str) -> Optional[str]:
-    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
-    return row["value"] if row else None
-
-
-def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
-    conn.execute(
-        "INSERT INTO meta (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (key, value),
-    )
+    return system.get_setting(conn, "last_session_id")
 
 
 def session_exists(conn: sqlite3.Connection, session_id: str) -> bool:
@@ -133,131 +123,44 @@ def get_recent_assistant_replies(
     return [dict(r) for r in rows]
 
 
-# ---------------------------------------------------------------------------
-# user_profile (core memory)
-# ---------------------------------------------------------------------------
-
-def save_fact(
-    conn: sqlite3.Connection,
-    key: str,
-    value: str,
-    category: Optional[str] = None,
-    source_message_id: Optional[int] = None,
-) -> None:
-    conn.execute(
-        "INSERT INTO user_profile (key, value, category, source_message_id) "
-        "VALUES (?, ?, ?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET "
-        "value = excluded.value, category = excluded.category, "
-        "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
-        (key, value, category, source_message_id),
-    )
-
-
-def forget_fact(conn: sqlite3.Connection, key: str) -> bool:
-    cur = conn.execute("DELETE FROM user_profile WHERE key = ?", (key,))
-    return cur.rowcount > 0
-
-
-def get_fact(conn: sqlite3.Connection, key: str) -> Optional[str]:
-    row = conn.execute("SELECT value FROM user_profile WHERE key = ?", (key,)).fetchone()
-    return row["value"] if row else None
-
-
-def get_all_facts(conn: sqlite3.Connection) -> list[dict[str, str]]:
-    rows = conn.execute(
-        "SELECT key, value, category FROM user_profile ORDER BY category, key"
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_facts_by_category(conn: sqlite3.Connection, category: str) -> list[dict[str, str]]:
-    rows = conn.execute(
-        "SELECT key, value, category FROM user_profile WHERE category = ? ORDER BY key",
-        (category,),
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
 def get_or_create_jobs_session(conn: sqlite3.Connection, model: str) -> str:
     """Dedicated session for scheduled Temporal job output (nightly reflection, schedule_job
     runs) — separate from create_session() so it never touches "last_session_id" meta, which
     would otherwise hijack the interactive CLI/server session on next launch."""
-    session_id = get_meta(conn, "jobs_session_id")
+    session_id = system.get_setting(conn, "jobs_session_id")
     if session_id and session_exists(conn, session_id):
         return session_id
     session_id = uuid.uuid4().hex
     conn.execute("INSERT INTO sessions (id, model) VALUES (?, ?)", (session_id, model))
-    set_meta(conn, "jobs_session_id", session_id)
+    system.set_setting(conn, "jobs_session_id", session_id)
     return session_id
 
 
 # ---------------------------------------------------------------------------
-# device_tokens (FCM push notification targets — see edith/push.py)
+# keyword search (FTS5)
 # ---------------------------------------------------------------------------
 
-def save_device_token(conn: sqlite3.Connection, token: str, platform: str = "android") -> None:
-    conn.execute(
-        "INSERT INTO device_tokens (token, platform) VALUES (?, ?) "
-        "ON CONFLICT(token) DO NOTHING",
-        (token, platform),
-    )
+def _fts_escape(query: str) -> str:
+    """Wrap free-text input in quotes per-token so FTS5 special characters
+    (AND, OR, NOT, *, -, ") in user input don't break the query syntax."""
+    tokens = query.split()
+    escaped = ['"{}"'.format(t.replace('"', '""')) for t in tokens]
+    return " ".join(escaped) if escaped else '""'
 
 
-def list_device_tokens(conn: sqlite3.Connection) -> list[str]:
-    rows = conn.execute("SELECT token FROM device_tokens").fetchall()
-    return [r["token"] for r in rows]
-
-
-def delete_device_token(conn: sqlite3.Connection, token: str) -> None:
-    conn.execute("DELETE FROM device_tokens WHERE token = ?", (token,))
-
-
-# ---------------------------------------------------------------------------
-# pending_actions (hard gate for risky tool actions — see edith/integrations/google/*)
-# ---------------------------------------------------------------------------
-
-def queue_pending_action(
-    conn: sqlite3.Connection, tool_name: str, args: dict, preview: str
-) -> int:
-    cur = conn.execute(
-        "INSERT INTO pending_actions (tool_name, args_json, preview) VALUES (?, ?, ?)",
-        (tool_name, json.dumps(args), preview),
-    )
-    return cur.lastrowid
-
-
-def get_pending_actions(conn: sqlite3.Connection, status: str = "pending") -> list[dict[str, Any]]:
+def search_history(
+    conn: sqlite3.Connection, query: str, limit: int = 10
+) -> list[dict[str, str]]:
+    fts_query = _fts_escape(query)
     rows = conn.execute(
-        "SELECT id, tool_name, args_json, preview, status, created_at FROM pending_actions "
-        "WHERE status = ? ORDER BY id ASC",
-        (status,),
+        """
+        SELECT m.id, m.session_id, m.role, m.content, m.created_at
+        FROM messages_fts
+        JOIN messages m ON m.id = messages_fts.rowid
+        WHERE messages_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+        """,
+        (fts_query, limit),
     ).fetchall()
-    return [
-        {
-            "id": r["id"],
-            "tool_name": r["tool_name"],
-            "args": json.loads(r["args_json"]),
-            "preview": r["preview"],
-            "status": r["status"],
-            "created_at": r["created_at"],
-        }
-        for r in rows
-    ]
-
-
-def resolve_pending_action(conn: sqlite3.Connection, action_id: int, status: str) -> Optional[dict[str, Any]]:
-    """Marks the action resolved and returns its row (tool_name/args) so the
-    caller can dispatch to the right executor. Returns None if the id doesn't
-    exist or isn't still pending."""
-    row = conn.execute(
-        "SELECT id, tool_name, args_json FROM pending_actions WHERE id = ? AND status = 'pending'",
-        (action_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    conn.execute(
-        "UPDATE pending_actions SET status = ?, resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
-        (status, action_id),
-    )
-    return {"id": row["id"], "tool_name": row["tool_name"], "args": json.loads(row["args_json"])}
+    return [dict(r) for r in rows]

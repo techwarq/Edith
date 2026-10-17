@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from edith.memory import mcp_store
+from edith.memory.records import system
 
 
 def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
@@ -30,7 +30,7 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
     async def list_servers(token: str = "") -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        servers = await asyncio.to_thread(mcp_store.list_servers, conn)
+        servers = await asyncio.to_thread(system.list_mcp_servers, conn)
         return JSONResponse({"servers": servers})
 
     @router.post("/mcp/servers", response_model=None)
@@ -50,8 +50,8 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
             return JSONResponse({"error": "env must be an object of string values"}, status_code=400)
 
         def _create() -> dict:
-            server_id = mcp_store.create_server(conn, name, command, args, env)
-            return mcp_store.get_server(conn, server_id)
+            server_id = system.create_mcp_server(conn, name, command, args, env)
+            return system.get_mcp_server(conn, server_id)
 
         try:
             server = await asyncio.to_thread(_create)
@@ -65,17 +65,17 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
         enabled = bool(body.get("enabled"))
-        ok = await asyncio.to_thread(mcp_store.set_enabled, conn, server_id, enabled)
+        ok = await asyncio.to_thread(system.set_mcp_server_enabled, conn, server_id, enabled)
         if not ok:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(await asyncio.to_thread(mcp_store.get_server, conn, server_id))
+        return JSONResponse(await asyncio.to_thread(system.get_mcp_server, conn, server_id))
 
     @router.post("/mcp/servers/{server_id}/delete", response_model=None)
     async def delete_server(server_id: int, request: Request) -> JSONResponse:
         body = await request.json()
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
-        ok = await asyncio.to_thread(mcp_store.delete_server, conn, server_id)
+        ok = await asyncio.to_thread(system.delete_mcp_server, conn, server_id)
         return JSONResponse({"ok": ok})
 
     return router

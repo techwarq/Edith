@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from edith.goals import api as goals_api
-from edith.memory import db, goals_store
+from edith.memory.records import planning
+from edith.memory.storage import sqlite
 
 TOKEN = "test-token"
 
 
 def _client(tmp_path):
-    conn = db.connect(tmp_path / "test.db")
+    conn = sqlite.connect(tmp_path / "test.db")
     router = goals_api.build_router(conn, TOKEN)
     app = FastAPI()
     app.include_router(router)
@@ -47,7 +48,7 @@ def test_get_goal_not_found(tmp_path):
 
 def test_update_goal_status(tmp_path):
     client, conn = _client(tmp_path)
-    goal_id = goals_store.create_goal(conn, "Goal")
+    goal_id = planning.create_goal(conn, "Goal")
 
     resp = client.post(f"/api/goals/{goal_id}/update", json={"token": TOKEN, "status": "done"})
 
@@ -63,18 +64,18 @@ def test_update_goal_not_found(tmp_path):
 
 def test_delete_goal(tmp_path):
     client, conn = _client(tmp_path)
-    goal_id = goals_store.create_goal(conn, "Goal")
+    goal_id = planning.create_goal(conn, "Goal")
 
     resp = client.post(f"/api/goals/{goal_id}/delete", json={"token": TOKEN})
 
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
-    assert goals_store.get_goal(conn, goal_id) is None
+    assert planning.get_goal(conn, goal_id) is None
 
 
 def test_add_and_complete_milestone(tmp_path):
     client, conn = _client(tmp_path)
-    goal_id = goals_store.create_goal(conn, "Goal")
+    goal_id = planning.create_goal(conn, "Goal")
 
     add_resp = client.post(f"/api/goals/{goal_id}/milestones", json={"token": TOKEN, "title": "step 1"})
     assert add_resp.status_code == 200
@@ -84,7 +85,7 @@ def test_add_and_complete_milestone(tmp_path):
     assert complete_resp.status_code == 200
     assert complete_resp.json()["ok"] is True
 
-    goal = goals_store.get_goal(conn, goal_id)
+    goal = planning.get_goal(conn, goal_id)
     assert goal["milestones"][0]["done"] == 1
 
 
@@ -96,7 +97,7 @@ def test_add_milestone_to_missing_goal(tmp_path):
 
 def test_insights_list_and_dismiss(tmp_path):
     client, conn = _client(tmp_path)
-    goals_store.add_insight(conn, "Something worth knowing")
+    planning.add_insight(conn, "Something worth knowing")
 
     list_resp = client.get("/api/insights", params={"token": TOKEN})
     assert list_resp.status_code == 200

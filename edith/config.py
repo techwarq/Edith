@@ -53,7 +53,11 @@ BROWSERBASE_CONTEXT_PATH = EDITH_HOME / "browserbase_context_id"
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "").strip()
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "").strip()
-QDRANT_COLLECTION = "edith_memory"
+QDRANT_COLLECTION = "eddy_memory"
+MEMORY_MODEL = os.environ.get("EDITH_MEMORY_MODEL", "qwen/qwen3.7-flash").strip()
+MEMORY_EMBEDDING_MODEL = "perplexity/pplx-embed-v1-0.6b"  # via OpenRouter, $0.004/M tokens, 32k context
+MEMORY_EMBEDDING_DIM = 1024
+# LinkedIn persona pgvector only (edith/integrations/linkedin/pgvector.py).
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIM = 3072
 

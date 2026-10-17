@@ -1,6 +1,6 @@
 """pgvector memory for LinkedIn Growth Engine.
 
-Mirrors edith/memory/vectors.py but for LinkedIn persona-scoped memory.
+Mirrors edith/memory/storage/qdrant.py but for LinkedIn persona-scoped memory.
 Uses Postgres + pgvector if DATABASE_URL is set, else no-ops (same philosophy as vectors.py).
 
 Embedding still via Gemini (gemini-embedding-001, 3072 dim) so we can swap without re-embedding.

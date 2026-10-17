@@ -1,10 +1,10 @@
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.observability import queries
 from edith.observability.tracing import Recorder
 
 
 def _conn(tmp_path):
-    conn = db.connect(tmp_path / "test.db")
+    conn = sqlite.connect(tmp_path / "test.db")
     conn.execute("INSERT INTO sessions (id, model) VALUES ('s1', 'gemini-3.5-flash')")
     conn.execute("INSERT INTO sessions (id, model) VALUES ('s2', 'gemini-3.5-flash')")
     return conn

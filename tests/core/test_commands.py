@@ -9,12 +9,15 @@ import pytest
 from edith import commands
 from edith.config import Settings
 from edith.integrations.google.auth import GoogleAuthError
-from edith.memory import db, store
+from edith.memory import conversation
+from edith.memory.brain import notes
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
@@ -93,7 +96,7 @@ def test_voice_toggle_bad_arg(conn, settings):
 
 
 def test_new_session(conn, settings):
-    sid = store.create_session(conn, settings.model)
+    sid = conversation.create_session(conn, settings.model)
     new_id, _, output = commands.handle_command("/new", conn, settings, sid, agent=None, voice_enabled=False)
     assert new_id != sid
     assert new_id[:8] in output
@@ -101,13 +104,17 @@ def test_new_session(conn, settings):
 
 def test_facts_empty(conn, settings):
     _, _, output = commands.handle_command("/facts", conn, settings, "sid", agent=None, voice_enabled=False)
-    assert "No facts" in output
+    assert "Nothing remembered yet" in output
 
 
-def test_facts_lists_stored(conn, settings):
-    store.save_fact(conn, "role", "PM", category="identity")
+def test_facts_lists_core_memories_and_regions(conn, settings):
+    attrs = {"context": "Works as a PM.", "keywords": [], "tags": [], "region": "career", "core": True}
+    notes.insert(conn, "role: PM", attrs, "explicit", None, notes.now(conn))
+    notes.insert(conn, "went hiking", {**attrs, "context": "Went hiking.", "region": "hobbies", "core": False}, "turn", None, notes.now(conn))
     _, _, output = commands.handle_command("/facts", conn, settings, "sid", agent=None, voice_enabled=False)
-    assert "role: PM" in output
+    assert "[career] Works as a PM." in output
+    assert "Went hiking" not in output
+    assert "career (1)" in output and "hobbies (1)" in output
 
 
 def test_working_on_empty(conn, settings):
@@ -116,7 +123,7 @@ def test_working_on_empty(conn, settings):
 
 
 def test_working_on_lists_tracked_projects(conn, settings):
-    store.save_fact(conn, "edith", "building the memory layer", category="working_on_project")
+    system.set_setting(conn, "edith", "building the memory layer", category="working_on_project")
     _, _, output = commands.handle_command("/working-on", conn, settings, "sid", agent=None, voice_enabled=False)
     assert output == "edith: building the memory layer"
 
@@ -127,8 +134,8 @@ def test_history_no_query(conn, settings):
 
 
 def test_history_search(conn, settings):
-    sid = store.create_session(conn, settings.model)
-    store.add_message(conn, sid, "user", content="I love hiking")
+    sid = conversation.create_session(conn, settings.model)
+    conversation.add_message(conn, sid, "user", content="I love hiking")
     _, _, output = commands.handle_command("/history hiking", conn, settings, sid, agent=None, voice_enabled=False)
     assert "hiking" in output
 
@@ -154,7 +161,7 @@ def test_approve_no_pending_actions(conn, settings):
 
 
 def test_approve_no_arg_lists_pending(conn, settings):
-    store.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
+    system.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
     _, _, output = commands.handle_command("/approve", conn, settings, "sid", agent=None, voice_enabled=False)
     assert "send_email" in output
     assert "Send email to x@y.com" in output
@@ -172,7 +179,7 @@ def test_approve_unknown_id(conn, settings):
 
 
 def test_approve_executes_and_marks_approved(monkeypatch, conn, settings):
-    action_id = store.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
+    action_id = system.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
     monkeypatch.setattr(commands.google_auth, "get_credentials", lambda: object())
 
     calls = []
@@ -182,12 +189,12 @@ def test_approve_executes_and_marks_approved(monkeypatch, conn, settings):
 
     assert calls == [{"to": "x@y.com"}]
     assert output == "Email sent."
-    assert store.get_pending_actions(conn, status="pending") == []
-    assert len(store.get_pending_actions(conn, status="approved")) == 1
+    assert system.get_pending_actions(conn, status="pending") == []
+    assert len(system.get_pending_actions(conn, status="approved")) == 1
 
 
 def test_reject_does_not_execute(monkeypatch, conn, settings):
-    action_id = store.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
+    action_id = system.queue_pending_action(conn, "send_email", {"to": "x@y.com"}, "Send email to x@y.com")
 
     calls = []
     monkeypatch.setitem(commands.EXECUTORS, "send_email", lambda creds, args: calls.append(args) or "Email sent.")
@@ -196,11 +203,11 @@ def test_reject_does_not_execute(monkeypatch, conn, settings):
 
     assert calls == []
     assert f"Rejected action #{action_id}" in output
-    assert len(store.get_pending_actions(conn, status="rejected")) == 1
+    assert len(system.get_pending_actions(conn, status="rejected")) == 1
 
 
 def test_approve_whatsapp_action_unaffected_by_missing_google_auth(monkeypatch, conn, settings):
-    action_id = store.queue_pending_action(
+    action_id = system.queue_pending_action(
         conn, "send_whatsapp_message", {"chat_name": "Mom", "message": "hi"}, "Send to Mom"
     )
     monkeypatch.setattr(commands.google_auth, "get_credentials", lambda: None)
@@ -239,7 +246,7 @@ def test_skill_talk_forwards_directive_to_agent(conn, settings):
     session_id, directive = agent.calls[0]
     assert session_id == "sid"
     assert "I write about AI agents, mainly on X" in directive
-    assert "content_strategy" in directive
+    assert "region='content strategy'" in directive
 
 
 def test_unknown_command(conn, settings):

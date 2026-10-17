@@ -1,9 +1,9 @@
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.observability.tracing import Recorder
 
 
 def _conn(tmp_path):
-    return db.connect(tmp_path / "test.db")
+    return sqlite.connect(tmp_path / "test.db")
 
 
 def test_recorder_creates_trace_row_on_construction(tmp_path):

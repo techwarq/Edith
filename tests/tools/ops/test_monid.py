@@ -96,7 +96,7 @@ def test_monid_discover_formats_results(monkeypatch):
         ),
     )
     registry = ToolRegistry()
-    monid.register(registry)
+    registry.register_module(monid)
 
     result = registry.dispatch("monid_discover", {"query": "twitter posts", "limit": 5})
 
@@ -113,7 +113,7 @@ def test_monid_run_caps_wait_seconds(monkeypatch):
 
     monkeypatch.setattr(monid.subprocess, "run", _fake)
     registry = ToolRegistry()
-    monid.register(registry)
+    registry.register_module(monid)
 
     registry.dispatch("monid_run", {"provider": "p", "endpoint": "e", "wait_seconds": 999})
 

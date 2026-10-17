@@ -1,6 +1,6 @@
 """Read-side aggregation queries over the traces/spans tables — backs the
 observability API's spending/performance endpoints. Pure SQL against the
-same SQLite connection everything else in edith uses (see edith/memory/db.py
+same SQLite connection everything else in edith uses (see edith/memory/storage/sqlite.py
 SCHEMA) — no separate warehouse/analytics DB.
 """
 

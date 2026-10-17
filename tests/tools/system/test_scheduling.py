@@ -6,6 +6,7 @@ import pytest
 
 from edith.temporal.client import TemporalNotConfigured
 from edith.tools.system import scheduling
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
@@ -15,8 +16,8 @@ class FakeSettings:
 
 @pytest.fixture
 def registry():
-    r = ToolRegistry()
-    scheduling.register(r, FakeSettings())
+    r = ToolRegistry(ToolContext(settings=FakeSettings()))
+    r.register_module(scheduling)
     return r
 
 

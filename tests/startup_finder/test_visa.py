@@ -1,5 +1,5 @@
-from edith.memory import db
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career
+from edith.memory.storage import sqlite
 from edith.startup_finder import visa
 
 
@@ -42,10 +42,10 @@ def test_germany_text_and_remote_signals():
 
 
 def test_backfill_and_pick_new_filter(tmp_path):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     conn.execute("INSERT INTO startup_leads (dedup_key, kind, company, domain, score) VALUES ('a', 'founder', 'A', 'a.de', 5)")
     conn.execute("INSERT INTO startup_leads (dedup_key, kind, company, domain, score) VALUES ('b', 'founder', 'B', 'b.no', 5)")
     conn.execute("INSERT INTO startup_leads (dedup_key, kind, company, domain, score) VALUES ('c', 'founder', 'C', 'c.ai', 5)")
     assert visa.backfill(conn) == 3 and visa.backfill(conn) == 0
-    assert [l["company"] for l in leads_store.pick_new(conn, 10, visa=["sponsor", "remote"])] == ["A"]
-    assert [l["company"] for l in leads_store.list_leads(conn, visa="unlikely")] == ["B"]
+    assert [l["company"] for l in career.pick_new_leads(conn, 10, visa=["sponsor", "remote"])] == ["A"]
+    assert [l["company"] for l in career.list_leads(conn, visa="unlikely")] == ["B"]

@@ -61,7 +61,7 @@ def test_tool_reply_name_field_stripped_before_sending_to_api():
     # "name" field on role="tool" messages, which isn't in the official
     # OpenAI schema. It must never reach client.chat.completions.create.
     registry = ToolRegistry()
-    registry.register({"type": "function", "function": {"name": "echo", "parameters": {}}}, lambda **kw: "echoed")
+    registry.register_schema({"type": "function", "function": {"name": "echo", "parameters": {}}}, lambda **kw: "echoed")
     responses = [
         make_response(tool_calls=[{"id": "call_1", "name": "echo", "arguments": "{}"}]),
         make_response(content="done"),
@@ -77,7 +77,7 @@ def test_tool_reply_name_field_stripped_before_sending_to_api():
 
 def test_run_completion_with_successful_tool_call():
     registry = ToolRegistry()
-    registry.register(
+    registry.register_schema(
         {"type": "function", "function": {"name": "echo", "parameters": {"type": "object", "properties": {}}}},
         lambda **kw: "echoed",
     )
@@ -96,7 +96,7 @@ def test_run_completion_with_successful_tool_call():
 
 def test_malformed_tool_arguments_does_not_crash():
     registry = ToolRegistry()
-    registry.register(
+    registry.register_schema(
         {"type": "function", "function": {"name": "echo", "parameters": {}}},
         lambda **kw: "echoed",
     )
@@ -134,7 +134,7 @@ def test_tool_exception_does_not_crash():
     def boom(**kw):
         raise ValueError("kaboom")
 
-    registry.register({"type": "function", "function": {"name": "boom", "parameters": {}}}, boom)
+    registry.register_schema({"type": "function", "function": {"name": "boom", "parameters": {}}}, boom)
     responses = [
         make_response(tool_calls=[{"id": "call_1", "name": "boom", "arguments": "{}"}]),
         make_response(content="recovered"),
@@ -151,7 +151,7 @@ def test_tool_exception_does_not_crash():
 def test_iteration_cap_forces_final_answer(monkeypatch):
     monkeypatch.setattr(llm_client, "MAX_TOOL_ITERATIONS", 2)
     registry = ToolRegistry()
-    registry.register({"type": "function", "function": {"name": "loop_tool", "parameters": {}}}, lambda **kw: "again")
+    registry.register_schema({"type": "function", "function": {"name": "loop_tool", "parameters": {}}}, lambda **kw: "again")
 
     responses = [
         make_response(tool_calls=[{"id": "call_1", "name": "loop_tool", "arguments": "{}"}]),
@@ -208,7 +208,7 @@ def test_gemini_thought_signature_preserved_across_tool_loop_iterations():
     # multi-turn tool use, or the next call 400s with "Function call is
     # missing a thought_signature" — confirmed live against the real API.
     registry = ToolRegistry()
-    registry.register({"type": "function", "function": {"name": "save_fact", "parameters": {}}}, lambda **kw: "saved")
+    registry.register_schema({"type": "function", "function": {"name": "save_fact", "parameters": {}}}, lambda **kw: "saved")
 
     signature_blob = {"google": {"thought_signature": "opaque-signature-value"}}
     responses = [
@@ -234,7 +234,7 @@ def test_non_gemini_tool_calls_have_no_extra_content_field():
     # OpenRouter/OpenAI tool calls never populate extra_content — confirm we
     # don't add a spurious empty field for them.
     registry = ToolRegistry()
-    registry.register({"type": "function", "function": {"name": "save_fact", "parameters": {}}}, lambda **kw: "saved")
+    registry.register_schema({"type": "function", "function": {"name": "save_fact", "parameters": {}}}, lambda **kw: "saved")
 
     responses = [
         make_response(tool_calls=[{"id": "call_1", "name": "save_fact", "arguments": "{}"}]),

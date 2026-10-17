@@ -1,4 +1,4 @@
-"""SQLite connection, PRAGMAs, schema DDL, integrity/FTS5 sanity checks."""
+"""SQLite connection, PRAGMAs, schema DDL, one-time migrations, integrity/FTS5 checks."""
 
 import sqlite3
 from pathlib import Path
@@ -24,20 +24,56 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, id);
 
-CREATE TABLE IF NOT EXISTS user_profile (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    key                TEXT NOT NULL UNIQUE,
-    value              TEXT NOT NULL,
-    category           TEXT,
-    source_message_id  INTEGER REFERENCES messages(id),
-    created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+CREATE TABLE IF NOT EXISTS settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    category    TEXT,
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE INDEX IF NOT EXISTS idx_settings_category ON settings(category);
 
-CREATE TABLE IF NOT EXISTS meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT
+-- The brain (edith/memory/brain). A note is one memory: raw content plus the
+-- LLM-written context/keywords/tags, a free-text region the brain picks itself
+-- ("preferences", "business", ...), and core=1 for what should always be in
+-- mind. Vectors live in Qdrant under the note's id; indexed=0 means not yet.
+CREATE TABLE IF NOT EXISTS memory_notes (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    content          TEXT NOT NULL,
+    context          TEXT NOT NULL DEFAULT '',
+    keywords         TEXT NOT NULL DEFAULT '[]',
+    tags             TEXT NOT NULL DEFAULT '[]',
+    region           TEXT NOT NULL DEFAULT 'general',
+    core             INTEGER NOT NULL DEFAULT 0,
+    source           TEXT NOT NULL DEFAULT 'turn',
+    session_id       TEXT,
+    indexed          INTEGER NOT NULL DEFAULT 0,
+    retrieval_count  INTEGER NOT NULL DEFAULT 0,
+    evolution_count  INTEGER NOT NULL DEFAULT 0,
+    last_accessed    TEXT,
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE INDEX IF NOT EXISTS idx_memory_notes_region ON memory_notes(region);
+CREATE INDEX IF NOT EXISTS idx_memory_notes_core ON memory_notes(core);
+
+-- note <-> note, undirected (note_a < note_b), relation written by the brain.
+CREATE TABLE IF NOT EXISTS memory_links (
+    note_a      INTEGER NOT NULL REFERENCES memory_notes(id) ON DELETE CASCADE,
+    note_b      INTEGER NOT NULL REFERENCES memory_notes(id) ON DELETE CASCADE,
+    relation    TEXT NOT NULL DEFAULT 'related',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (note_a, note_b)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_links_b ON memory_links(note_b);
+
+-- note <-> structured record (goal, todo, job_application, startup_lead, ...).
+CREATE TABLE IF NOT EXISTS memory_refs (
+    note_id    INTEGER NOT NULL REFERENCES memory_notes(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,
+    record_id  INTEGER NOT NULL,
+    PRIMARY KEY (note_id, kind, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_refs_record ON memory_refs(kind, record_id);
 
 CREATE TABLE IF NOT EXISTS pending_actions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,10 +329,8 @@ CREATE TABLE IF NOT EXISTS job_applications (
 CREATE INDEX IF NOT EXISTS idx_job_applications_domain ON job_applications(company_domain);
 CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications(status, created_at);
 
--- Parsed resume + writing-style-sample text, kept out of user_profile deliberately:
--- build_system_prompt injects every user_profile fact into every chat turn's system
--- prompt regardless of category, and this much text has no business bloating unrelated
--- turns. Loaded explicitly, only by the job-application drafting tool. Single row
+-- Parsed resume + writing-style-sample text, kept out of the brain deliberately:
+-- this much text has no business being recalled into unrelated turns. Loaded explicitly, only by the job-application drafting tool. Single row
 -- (id fixed at 1), populated once by scripts/ingest_resume.py, upsert-only after that.
 CREATE TABLE IF NOT EXISTS resume_profile (
     id                 INTEGER PRIMARY KEY CHECK (id = 1),
@@ -438,9 +472,55 @@ def connect(db_path: Path) -> sqlite3.Connection:
     for col in ("company_info", "draft_to", "draft_subject", "draft_body", "sent_at", "sent_to", "visa", "visa_why"):
         _ensure_column(conn, "startup_leads", col, "TEXT")
     _ensure_linkedin_schema(conn)
+    _migrate_legacy_memory(conn, db_path)
     _check_integrity(conn)
 
     return conn
+
+
+SETTINGS_CATEGORIES = (
+    "tracked_url", "job_source", "jobs_config", "shipping_repo", "shipping_account",
+    "vercel_project", "working_on_project", "social_skill",
+)
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone() is not None
+
+
+def _migrate_legacy_memory(conn: sqlite3.Connection, db_path: Path) -> None:
+    """meta + user_profile -> settings + brain notes. App config rows become settings;
+    everything personal becomes a core brain note (indexed into Qdrant later by
+    Brain.index_pending). A copy of the pre-migration DB is kept next to the original."""
+    if not (_table_exists(conn, "user_profile") or _table_exists(conn, "meta")):
+        return
+    backup = db_path.with_name(db_path.stem + ".pre-brain" + db_path.suffix)
+    if not backup.exists():
+        conn.execute("VACUUM INTO ?", (str(backup),))
+    placeholders = ",".join("?" * len(SETTINGS_CATEGORIES))
+    conn.execute("BEGIN")
+    try:
+        if _table_exists(conn, "meta"):
+            conn.execute("INSERT OR IGNORE INTO settings (key, value) SELECT key, value FROM meta WHERE value IS NOT NULL")
+            conn.execute("DROP TABLE meta")
+        if _table_exists(conn, "user_profile"):
+            conn.execute(
+                f"INSERT OR IGNORE INTO settings (key, value, category, updated_at) "
+                f"SELECT key, value, category, updated_at FROM user_profile WHERE category IN ({placeholders})",
+                SETTINGS_CATEGORIES,
+            )
+            conn.execute(
+                f"INSERT INTO memory_notes (content, context, region, core, source, created_at, updated_at) "
+                f"SELECT key || ': ' || value, key || ': ' || value, "
+                f"COALESCE(NULLIF(REPLACE(category, '_', ' '), ''), 'about me'), 1, 'migrated', created_at, updated_at "
+                f"FROM user_profile WHERE category IS NULL OR category NOT IN ({placeholders}) ORDER BY id",
+                SETTINGS_CATEGORIES,
+            )
+            conn.execute("DROP TABLE user_profile")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def _check_fts5_support(conn: sqlite3.Connection) -> None:

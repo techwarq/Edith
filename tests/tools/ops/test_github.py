@@ -2,6 +2,7 @@ import base64
 from types import SimpleNamespace
 
 from edith.tools.ops import github
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
@@ -16,8 +17,8 @@ def _fake_response(json_data, status_code=200):
 
 def _registry(monkeypatch, response, settings=None):
     monkeypatch.setattr(github.requests, "get", lambda *a, **k: response)
-    r = ToolRegistry()
-    github.register(r, settings or _FakeSettings())
+    r = ToolRegistry(ToolContext(settings=settings or _FakeSettings()))
+    r.register_module(github)
     return r
 
 

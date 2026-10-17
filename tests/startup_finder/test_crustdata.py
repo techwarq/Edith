@@ -1,5 +1,5 @@
-from edith.memory import db
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career
+from edith.memory.storage import sqlite
 from edith.startup_finder import crustdata, finder
 
 CLIPSTER = {
@@ -72,7 +72,7 @@ def test_enrich_batches_and_survives_errors(monkeypatch):
 
 
 def test_find_applies_crustdata_and_persists(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     raw = [{"kind": "founder", "dedup_key": "co:clipster.ai", "company": "Clipster", "domain": "clipster.ai", "fund": "Antler",
             "source": "getro", "region": "europe", "description": "AI video", "active_jobs": 1}]
     monkeypatch.setattr(finder, "crawl", lambda on_progress=None: ([dict(r) for r in raw], {"sources": {}, "errors": {}}))
@@ -88,7 +88,7 @@ def test_find_applies_crustdata_and_persists(tmp_path, monkeypatch):
     assert lead["team_size"] == 12 and lead["stage"] == "seed"
     ana = lead["founders"][0]
     assert ana["email"] == "ana@clipster.ai" and ana["linkedin"] == "https://linkedin.com/in/anaberg"
-    stored = leads_store.get_lead(conn, lead["id"])
+    stored = career.get_lead(conn, lead["id"])
     assert stored["company_info"]["total_funding_usd"] == 3_500_000.0
     assert stored["team_size"] == 12
     assert "founders" not in stored["company_info"]
@@ -96,7 +96,7 @@ def test_find_applies_crustdata_and_persists(tmp_path, monkeypatch):
 
 
 def test_find_skips_crustdata_without_key(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     raw = [{"kind": "founder", "dedup_key": "co:vox.ai", "company": "Vox", "domain": "vox.ai", "fund": "Index",
             "source": "getro", "region": "europe", "description": "AI audio dubbing", "active_jobs": 1}]
     monkeypatch.setattr(finder, "crawl", lambda on_progress=None: ([dict(r) for r in raw], {"sources": {}, "errors": {}}))
@@ -110,7 +110,7 @@ def crustdata_out():
 
 def test_us_hq_from_crustdata_is_dropped_and_headcount_overrides(tmp_path, monkeypatch):
     from tests.startup_finder.test_finder import FakeClient, _no_fetch
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     raw = [
         {"kind": "founder", "dedup_key": "co:clipster.ai", "company": "Clipster", "domain": "clipster.ai", "fund": "Antler",
          "source": "getro", "region": "europe", "description": "AI video", "active_jobs": 1, "team_size": 30},
@@ -125,11 +125,11 @@ def test_us_hq_from_crustdata_is_dropped_and_headcount_overrides(tmp_path, monke
     out = finder.find(conn, count=2, genai_client=FakeClient(), model="m", crustdata_api_key="k", min_team=10, max_team=40)
     assert [l["company"] for l in out["leads"]] == ["Clipster"]
     assert out["leads"][0]["team_size"] == 12
-    assert leads_store.list_leads(conn, status="skipped")[0]["region"] == "us"
+    assert career.list_leads(conn, status="skipped")[0]["region"] == "us"
 
 
 def test_draft_lead_enriches_old_lead_without_touching_delivery(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     conn.execute("INSERT INTO startup_leads (dedup_key, kind, company, domain, status, delivered_at) "
                  "VALUES ('co:clipster.ai', 'founder', 'Clipster', 'clipster.ai', 'delivered', '2026-01-01T00:00:00Z')")
     monkeypatch.setattr(finder.crustdata, "enrich", lambda key, domains: crustdata_out())
@@ -147,7 +147,7 @@ def test_draft_lead_enriches_old_lead_without_touching_delivery(tmp_path, monkey
 
 def test_location_search_feeds_pool_and_survives_prune(tmp_path, monkeypatch):
     from tests.startup_finder.test_finder import FakeClient, _no_fetch
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     monkeypatch.setattr(finder, "crawl", lambda on_progress=None: ([], {"sources": {}, "errors": {}}))
     _no_fetch(monkeypatch)
     rows = [{**CLIPSTER, "basic_info": {**CLIPSTER["basic_info"], "name": "Riff", "primary_domain": "riff.ai",
@@ -166,11 +166,11 @@ def test_location_search_feeds_pool_and_survives_prune(tmp_path, monkeypatch):
     assert conds[0]["conditions"][0] == {"field": "locations.country", "type": "in", "value": ["Norway"]}
     assert out["leads"][0]["company_info"]["headcount"] == 12
     finder.refresh(conn)
-    assert leads_store.get_lead(conn, out["leads"][0]["id"]) is not None
+    assert career.get_lead(conn, out["leads"][0]["id"]) is not None
 
 
 def test_same_company_under_another_domain_is_not_repeated(tmp_path, monkeypatch):
-    conn = db.connect(tmp_path / "t.db")
+    conn = sqlite.connect(tmp_path / "t.db")
     raw = [{"kind": "founder", "dedup_key": f"co:{d}", "company": n, "domain": d, "fund": "Antler", "source": "getro",
             "region": "europe", "description": "AI video", "active_jobs": 1, "team_size": 20}
            for n, d in (("Vexter AS", "vexter.no"), ("Vexter", "vexter.io"), ("Other", "other.ai"))]

@@ -16,7 +16,7 @@ class _FakeStore:
 
 
 def test_latest_job_reply_empty_jobs_session(monkeypatch):
-    monkeypatch.setattr(server, "store", _FakeStore([]))
+    monkeypatch.setattr(server, "conversation", _FakeStore([]))
 
     result = server._latest_job_reply()
 
@@ -24,7 +24,7 @@ def test_latest_job_reply_empty_jobs_session(monkeypatch):
 
 
 def test_latest_job_reply_happy_path(monkeypatch):
-    monkeypatch.setattr(server, "store", _FakeStore([{"content": "Top startup news today...", "created_at": "x"}]))
+    monkeypatch.setattr(server, "conversation", _FakeStore([{"content": "Top startup news today...", "created_at": "x"}]))
     monkeypatch.setattr(server.voice, "to_spoken_style", lambda client, model, text: "Spoken: " + text)
     monkeypatch.setattr(server.voice, "synthesize", lambda client, text, model, voice: b"fake-wav-bytes")
 
@@ -37,7 +37,7 @@ def test_latest_job_reply_happy_path(monkeypatch):
 
 
 def test_latest_job_reply_tts_failure_falls_back_to_text_only(monkeypatch):
-    monkeypatch.setattr(server, "store", _FakeStore([{"content": "Top startup news today...", "created_at": "x"}]))
+    monkeypatch.setattr(server, "conversation", _FakeStore([{"content": "Top startup news today...", "created_at": "x"}]))
     monkeypatch.setattr(server.voice, "to_spoken_style", lambda client, model, text: text)
 
     def fail_synthesize(*args, **kwargs):

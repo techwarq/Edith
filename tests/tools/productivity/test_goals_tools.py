@@ -1,12 +1,13 @@
-from edith.memory import db
+from edith.memory.storage import sqlite
 from edith.tools.productivity import goals as goals_tool
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 def _registry(tmp_path):
-    conn = db.connect(tmp_path / "test.db")
-    r = ToolRegistry()
-    goals_tool.register(r, conn)
+    conn = sqlite.connect(tmp_path / "test.db")
+    r = ToolRegistry(ToolContext(conn=conn))
+    r.register_module(goals_tool)
     return r, conn
 
 

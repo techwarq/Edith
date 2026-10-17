@@ -31,7 +31,6 @@ endpoint you open in your phone's browser instead.
 """
 
 import logging
-import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -43,8 +42,8 @@ from edith.config import (
     WHATSAPP_PROFILE_DIR,
     WHATSAPP_QR_PATH,
 )
-from edith.memory import store
-from edith.tools.registry import ToolRegistry
+from edith.memory.records import system
+from edith.tools.base import ToolContext, tool
 
 logger = logging.getLogger("edith.integrations.whatsapp")
 
@@ -144,7 +143,13 @@ def _open_chat(page: Page, chat_name: str) -> bool:
     return True
 
 
+@tool
 def whatsapp_list_chats(limit: int = 20) -> str:
+    """List the user's recent WhatsApp chats (name, last message preview, time).
+
+    Args:
+        limit: Max chats to return, default 20
+    """
     try:
         with _session() as page:
             page.goto(WHATSAPP_URL)
@@ -163,7 +168,13 @@ def whatsapp_list_chats(limit: int = 20) -> str:
         return f"ERROR: WhatsApp list chats failed: {e}"
 
 
+@tool
 def whatsapp_read_chat(chat_name: str, limit: int = 20) -> str:
+    """Read recent messages from a WhatsApp chat by contact/group name.
+
+    Args:
+        limit: Max messages to return, default 20
+    """
     try:
         with _session() as page:
             page.goto(WHATSAPP_URL)
@@ -229,70 +240,16 @@ def execute_send_whatsapp_message(_auth, args: dict) -> str:
 EXECUTORS = {"send_whatsapp_message": execute_send_whatsapp_message}
 
 
-def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:
-    def send_whatsapp_message(chat_name: str, message: str) -> str:
-        action_id = store.queue_pending_action(
-            conn,
-            tool_name="send_whatsapp_message",
-            args={"chat_name": chat_name, "message": message},
-            preview=f"Send WhatsApp message to '{chat_name}'\n\n{message}",
-        )
-        return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it sends."
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "whatsapp_list_chats",
-                "description": "List the user's recent WhatsApp chats (name, last message preview, time).",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"limit": {"type": "integer", "description": "Max chats to return, default 20"}},
-                    "required": [],
-                },
-            },
-        },
-        whatsapp_list_chats,
+@tool
+def send_whatsapp_message(ctx: ToolContext, chat_name: str, message: str) -> str:
+    """Propose sending a WhatsApp message. This does NOT send immediately — it queues
+    the message for the user's review. Tell the user to run /approve to confirm
+    before it actually sends.
+    """
+    action_id = system.queue_pending_action(
+        ctx.conn,
+        tool_name="send_whatsapp_message",
+        args={"chat_name": chat_name, "message": message},
+        preview=f"Send WhatsApp message to '{chat_name}'\n\n{message}",
     )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "whatsapp_read_chat",
-                "description": "Read recent messages from a WhatsApp chat by contact/group name.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "chat_name": {"type": "string"},
-                        "limit": {"type": "integer", "description": "Max messages to return, default 20"},
-                    },
-                    "required": ["chat_name"],
-                },
-            },
-        },
-        whatsapp_read_chat,
-    )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "send_whatsapp_message",
-                "description": (
-                    "Propose sending a WhatsApp message. This does NOT send immediately — it queues "
-                    "the message for the user's review. Tell the user to run /approve to confirm "
-                    "before it actually sends."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "chat_name": {"type": "string"},
-                        "message": {"type": "string"},
-                    },
-                    "required": ["chat_name", "message"],
-                },
-            },
-        },
-        send_whatsapp_message,
-    )
+    return f"Queued as action #{action_id}. Tell the user to run /approve to review and confirm before it sends."

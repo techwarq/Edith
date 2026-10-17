@@ -4,12 +4,13 @@ and edith.integrations.push._get_app are monkeypatched with fakes."""
 import pytest
 
 from edith.integrations import push
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
@@ -27,7 +28,7 @@ def reset_app_singleton(monkeypatch):
 def test_no_op_when_firebase_not_configured(conn, monkeypatch):
     calls = []
     monkeypatch.setattr(push.messaging, "send", lambda *a, **kw: calls.append((a, kw)))
-    store.save_device_token(conn, "some-token")
+    system.save_device_token(conn, "some-token")
 
     push.send_push_notification(conn, FakeSettings(""), "Title", "Body")
 
@@ -52,8 +53,8 @@ def test_sends_to_every_registered_token(conn, monkeypatch):
 
     monkeypatch.setattr(push.messaging, "send", fake_send)
     monkeypatch.setattr(push, "_get_app", lambda settings: object())
-    store.save_device_token(conn, "token-a")
-    store.save_device_token(conn, "token-b")
+    system.save_device_token(conn, "token-a")
+    system.save_device_token(conn, "token-b")
 
     push.send_push_notification(conn, FakeSettings("{}"), "Title", "Body")
 
@@ -66,11 +67,11 @@ def test_prunes_stale_token_on_unregistered_error(conn, monkeypatch):
 
     monkeypatch.setattr(push.messaging, "send", fake_send)
     monkeypatch.setattr(push, "_get_app", lambda settings: object())
-    store.save_device_token(conn, "stale-token")
+    system.save_device_token(conn, "stale-token")
 
     push.send_push_notification(conn, FakeSettings("{}"), "Title", "Body")
 
-    assert store.list_device_tokens(conn) == []
+    assert system.list_device_tokens(conn) == []
 
 
 def test_data_payload_passed_through_when_provided(conn, monkeypatch):
@@ -81,7 +82,7 @@ def test_data_payload_passed_through_when_provided(conn, monkeypatch):
 
     monkeypatch.setattr(push.messaging, "send", fake_send)
     monkeypatch.setattr(push, "_get_app", lambda settings: object())
-    store.save_device_token(conn, "token-a")
+    system.save_device_token(conn, "token-a")
 
     push.send_push_notification(conn, FakeSettings("{}"), "Title", "Body", data={"type": "job_completion"})
 
@@ -96,7 +97,7 @@ def test_data_payload_defaults_to_none(conn, monkeypatch):
 
     monkeypatch.setattr(push.messaging, "send", fake_send)
     monkeypatch.setattr(push, "_get_app", lambda settings: object())
-    store.save_device_token(conn, "token-a")
+    system.save_device_token(conn, "token-a")
 
     push.send_push_notification(conn, FakeSettings("{}"), "Title", "Body")
 
@@ -113,10 +114,10 @@ def test_other_tokens_still_sent_after_one_fails(conn, monkeypatch):
 
     monkeypatch.setattr(push.messaging, "send", fake_send)
     monkeypatch.setattr(push, "_get_app", lambda settings: object())
-    store.save_device_token(conn, "bad-token")
-    store.save_device_token(conn, "good-token")
+    system.save_device_token(conn, "bad-token")
+    system.save_device_token(conn, "good-token")
 
     push.send_push_notification(conn, FakeSettings("{}"), "Title", "Body")
 
     assert sent_tokens == ["good-token"]
-    assert store.list_device_tokens(conn) == ["good-token"]
+    assert system.list_device_tokens(conn) == ["good-token"]

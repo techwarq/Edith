@@ -29,7 +29,7 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from edith.memory import mcp_store
+from edith.memory.records import system
 from edith.tools.registry import ToolRegistry
 
 logger = logging.getLogger("edith.tools.mcp_client")
@@ -72,7 +72,7 @@ async def _call_tool_async(params: StdioServerParameters, tool_name: str, args: 
 
 
 def register_all(registry: ToolRegistry, conn) -> None:
-    for server in mcp_store.list_servers(conn, enabled_only=True):
+    for server in system.list_mcp_servers(conn, enabled_only=True):
         params = _server_params(server)
         try:
             tools = asyncio.run(_list_tools_async(params))
@@ -95,7 +95,7 @@ def _register_one(registry: ToolRegistry, server: dict[str, Any], params: StdioS
             logger.exception("MCP tool call failed: server=%r tool=%r", server["name"], tool.name)
             return f"ERROR: MCP tool '{tool.name}' on server '{server['name']}' failed: {e}"
 
-    registry.register(
+    registry.register_schema(
         {
             "type": "function",
             "function": {

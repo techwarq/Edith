@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from edith.config import Settings
 from edith.integrations.google import auth as google_auth
 from edith.integrations.google import gmail
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career
 from edith.startup_finder import email_draft, finder, llm, visa
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -91,14 +91,14 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         if (err := _check_token(token)) is not None:
             return err
         await asyncio.to_thread(visa.backfill, conn)
-        leads = await asyncio.to_thread(leads_store.list_leads, conn, status, kind, region, min_score, min(limit, 500), visa_path)
-        return JSONResponse({"leads": leads, "stats": await asyncio.to_thread(leads_store.stats, conn)})
+        leads = await asyncio.to_thread(career.list_leads, conn, status, kind, region, min_score, min(limit, 500), visa_path)
+        return JSONResponse({"leads": leads, "stats": await asyncio.to_thread(career.lead_stats, conn)})
 
     @router.get("/leads/{lead_id}", response_model=None)
     async def get_lead(lead_id: int, token: str = "") -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        lead = await asyncio.to_thread(leads_store.get_lead, conn, lead_id)
+        lead = await asyncio.to_thread(career.get_lead, conn, lead_id)
         if lead is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse(lead)
@@ -109,12 +109,12 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
         status = body.get("status")
-        if status not in leads_store.STATUSES:
-            return JSONResponse({"error": f"status must be one of {list(leads_store.STATUSES)}"}, status_code=400)
-        ok = await asyncio.to_thread(leads_store.update_status, conn, lead_id, status)
+        if status not in career.LEAD_STATUSES:
+            return JSONResponse({"error": f"status must be one of {list(career.LEAD_STATUSES)}"}, status_code=400)
+        ok = await asyncio.to_thread(career.update_lead_status, conn, lead_id, status)
         if not ok:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return JSONResponse(await asyncio.to_thread(leads_store.get_lead, conn, lead_id))
+        return JSONResponse(await asyncio.to_thread(career.get_lead, conn, lead_id))
 
     @router.post("/leads/{lead_id}/draft", response_model=None)
     async def draft(lead_id: int, request: Request) -> JSONResponse:
@@ -134,7 +134,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
         body = await request.json()
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
-        lead = await asyncio.to_thread(leads_store.get_lead, conn, lead_id)
+        lead = await asyncio.to_thread(career.get_lead, conn, lead_id)
         if lead is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         raw_to = body.get("to") or lead.get("draft_to") or ""
@@ -146,7 +146,7 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
             return JSONResponse({"error": "no valid recipient email"}, status_code=400)
         if not subject or not text:
             return JSONResponse({"error": "subject and body are required"}, status_code=400)
-        already = set(leads_store.sent_recipients(lead))
+        already = set(career.lead_recipients(lead))
         todo = [e for e in wanted if e.lower() not in already or body.get("resend")]
         if not todo:
             return JSONResponse({"error": f"already emailed {', '.join(wanted)}"}, status_code=409)
@@ -169,9 +169,9 @@ def build_router(conn: sqlite3.Connection, settings: Settings, genai_client: Any
             else:
                 sent.append(to)
         if sent:
-            await asyncio.to_thread(leads_store.mark_sent, conn, lead_id, sent, subject, text)
+            await asyncio.to_thread(career.mark_lead_sent, conn, lead_id, sent, subject, text)
         if failed:
             return JSONResponse({"error": "; ".join(failed), "sent": sent}, status_code=502)
-        return JSONResponse(await asyncio.to_thread(leads_store.get_lead, conn, lead_id))
+        return JSONResponse(await asyncio.to_thread(career.get_lead, conn, lead_id))
 
     return router

@@ -1,59 +1,56 @@
-"""Tests for edith/tools/productivity/notes.py's save_fact duplicate-surfacing hint.
-
-Live use surfaced a real memory bug: the model would save a new fact under a
-slightly different key than one already covering the same thing (e.g. 'job'
-vs 'current_role'), leaving stale/conflicting duplicates in the profile with
-no way for the model to notice. save_fact now returns any other facts
-already stored in the same category so the model can catch and clean up
-overlap right when it happens.
-"""
-
 import pytest
 
-from edith.memory import db, store
+from edith.memory.brain import Brain
+from edith.memory.storage import sqlite
+from edith.tools.base import ToolContext
 from edith.tools.productivity import notes
 from edith.tools.registry import ToolRegistry
+from tests.memory.test_brain import FakeLLM, FakeQdrant
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
-def _registry(conn):
-    registry = ToolRegistry()
-    notes.register(registry, conn, qdrant_client=None, genai_client=None)
+def _registry(conn, brain):
+    registry = ToolRegistry(ToolContext(conn=conn, brain=brain))
+    registry.register_module(notes)
     return registry
 
 
-def test_save_fact_flags_other_facts_in_same_category(conn):
-    registry = _registry(conn)
-    registry.dispatch("save_fact", {"key": "current_role", "value": "PM at Allore", "category": "identity"})
+def test_remember_reports_where_it_was_filed(conn):
+    llm = FakeLLM()
+    llm.perceive = lambda p: {
+        "worth_remembering": True, "region": "preferences", "core": True,
+        "context": "Prefers calls after 4pm.", "keywords": [], "tags": [],
+    }
+    registry = _registry(conn, Brain(conn, llm, "m", FakeQdrant()))
 
-    result = registry.dispatch("save_fact", {"key": "job", "value": "Product Manager", "category": "identity"})
+    result = registry.dispatch("remember", {"content": "Sonali prefers calls after 4pm"})
 
-    assert "current_role=PM at Allore" in result
-    assert "Saved: job = Product Manager" in result
-
-
-def test_save_fact_does_not_flag_itself_on_update(conn):
-    registry = _registry(conn)
-    registry.dispatch("save_fact", {"key": "current_role", "value": "PM at Allore", "category": "identity"})
-
-    result = registry.dispatch(
-        "save_fact", {"key": "current_role", "value": "Senior PM at Allore", "category": "identity"}
-    )
-
-    assert "check for overlap" not in result
-    assert store.get_fact(conn, "current_role") == "Senior PM at Allore"
+    assert result == "Remembered as #1 in 'preferences', core: Prefers calls after 4pm."
 
 
-def test_save_fact_no_hint_without_category(conn):
-    registry = _registry(conn)
-    registry.dispatch("save_fact", {"key": "favorite_color", "value": "blue", "category": ""})
+def test_remember_passes_region_hint(conn):
+    registry = _registry(conn, Brain(conn, FakeLLM(), "m", FakeQdrant()))
+    result = registry.dispatch("remember", {"content": "Posts on X daily", "region": "content strategy"})
+    assert "'content strategy'" in result
 
-    result = registry.dispatch("save_fact", {"key": "favorite_food", "value": "pizza", "category": ""})
 
-    assert "check for overlap" not in result
+def test_remember_without_llm_says_so(conn):
+    registry = _registry(conn, Brain(conn))
+    assert "isn't configured" in registry.dispatch("remember", {"content": "x"})
+
+
+def test_recall_and_forget_round_trip(conn):
+    brain = Brain(conn, FakeLLM(), "m", FakeQdrant())
+    registry = _registry(conn, brain)
+    note = brain.remember("training for a half marathon in march")
+
+    assert f"#{note['id']}" in registry.dispatch("recall", {"query": "half marathon"})
+    assert registry.dispatch("forget_memory", {"note_id": note["id"]}) == f"Forgot memory #{note['id']}."
+    assert registry.dispatch("recall", {"query": "half marathon"}) == "No related memories found."
+    assert registry.dispatch("forget_memory", {"note_id": note["id"]}) == f"No memory #{note['id']} exists."

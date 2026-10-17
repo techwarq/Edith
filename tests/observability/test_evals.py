@@ -1,11 +1,13 @@
 import json
 
-from edith.memory import db, store
+from edith.memory import conversation
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 from edith.observability import evals
 
 
 def _conn(tmp_path):
-    return db.connect(tmp_path / "test.db")
+    return sqlite.connect(tmp_path / "test.db")
 
 
 class _FakeAgent:
@@ -149,8 +151,8 @@ def test_run_eval_suite_runs_all_cases_and_creates_run(tmp_path):
 
 def test_run_eval_case_uses_scratch_session_not_interactive_one(tmp_path):
     conn = _conn(tmp_path)
-    real_session = store.create_session(conn, "gemini-3.5-flash")
-    store.set_meta(conn, "last_session_id", real_session)
+    real_session = conversation.create_session(conn, "gemini-3.5-flash")
+    system.set_setting(conn, "last_session_id", real_session)
     case = _make_case(conn)
     _make_run(conn)
     agent = _FakeAgent(conn)

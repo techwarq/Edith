@@ -14,13 +14,12 @@ spreadsheet cell isn't.
 """
 
 import logging
-import sqlite3
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from edith.integrations.google.auth import get_credentials
-from edith.tools.registry import ToolRegistry
+from edith.tools.base import tool
 
 logger = logging.getLogger("edith.integrations.google.docs_sheets")
 
@@ -41,7 +40,10 @@ def _extract_doc_text(body: dict) -> str:
     return "".join(parts)
 
 
+@tool
 def docs_read(document_id: str) -> str:
+    """Read the text content of a Google Doc by its document id.
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -57,7 +59,10 @@ def docs_read(document_id: str) -> str:
         return f"ERROR: Docs read failed: {e}"
 
 
+@tool
 def sheets_read(spreadsheet_id: str, range: str) -> str:  # noqa: A002 - matches Sheets API param name
+    """Read a cell range from a Google Sheet, e.g. range='Sheet1!A1:D20'.
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -76,7 +81,16 @@ def sheets_read(spreadsheet_id: str, range: str) -> str:  # noqa: A002 - matches
         return f"ERROR: Sheets read failed: {e}"
 
 
+@tool
 def sheets_append_row(spreadsheet_id: str, range: str, values: list[str]) -> str:  # noqa: A002 - matches Sheets API param name
+    """Append a new row to the end of the data in a Google Sheet range, e.g.
+    range='Sheet1!A:D'. Use this to add new entries (like new questions/tasks)
+    without overwriting existing rows.
+
+    Args:
+        range: Sheet name or range to append within, e.g. 'Sheet1!A:D'
+        values: The row's cell values in order, e.g. ['Q1', 'What is a closure?', 'Not started']
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -95,7 +109,16 @@ def sheets_append_row(spreadsheet_id: str, range: str, values: list[str]) -> str
         return f"ERROR: Sheets append failed: {e}"
 
 
+@tool
 def sheets_update_cell(spreadsheet_id: str, range: str, values: list[str]) -> str:  # noqa: A002 - matches Sheets API param name
+    """Overwrite specific cell(s) in a Google Sheet, e.g. range='Sheet1!C5' for one
+    cell or 'Sheet1!C5:D5' for a few in a row. Use this to mark a row completed,
+    update a status, or leave a comment in an existing row — not for adding new rows.
+
+    Args:
+        range: Exact cell or cell range to overwrite, e.g. 'Sheet1!C5:D5'
+        values: Values to write, one per cell in the range, in order
+    """
     creds = get_credentials()
     if not creds:
         return NOT_CONNECTED
@@ -111,96 +134,3 @@ def sheets_update_cell(spreadsheet_id: str, range: str, values: list[str]) -> st
     except HttpError as e:
         logger.exception("sheets_update_cell failed")
         return f"ERROR: Sheets update failed: {e}"
-
-
-def register(registry: ToolRegistry, conn: sqlite3.Connection) -> None:  # noqa: ARG001 - conn kept for signature consistency with other register()s
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "docs_read",
-                "description": "Read the text content of a Google Doc by its document id.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"document_id": {"type": "string"}},
-                    "required": ["document_id"],
-                },
-            },
-        },
-        docs_read,
-    )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "sheets_read",
-                "description": "Read a cell range from a Google Sheet, e.g. range='Sheet1!A1:D20'.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "spreadsheet_id": {"type": "string"},
-                        "range": {"type": "string"},
-                    },
-                    "required": ["spreadsheet_id", "range"],
-                },
-            },
-        },
-        sheets_read,
-    )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "sheets_append_row",
-                "description": (
-                    "Append a new row to the end of the data in a Google Sheet range, e.g. "
-                    "range='Sheet1!A:D'. Use this to add new entries (like new questions/tasks) "
-                    "without overwriting existing rows."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "spreadsheet_id": {"type": "string"},
-                        "range": {"type": "string", "description": "Sheet name or range to append within, e.g. 'Sheet1!A:D'"},
-                        "values": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "The row's cell values in order, e.g. ['Q1', 'What is a closure?', 'Not started']",
-                        },
-                    },
-                    "required": ["spreadsheet_id", "range", "values"],
-                },
-            },
-        },
-        sheets_append_row,
-    )
-
-    registry.register(
-        {
-            "type": "function",
-            "function": {
-                "name": "sheets_update_cell",
-                "description": (
-                    "Overwrite specific cell(s) in a Google Sheet, e.g. range='Sheet1!C5' for one "
-                    "cell or 'Sheet1!C5:D5' for a few in a row. Use this to mark a row completed, "
-                    "update a status, or leave a comment in an existing row — not for adding new rows."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "spreadsheet_id": {"type": "string"},
-                        "range": {"type": "string", "description": "Exact cell or cell range to overwrite, e.g. 'Sheet1!C5:D5'"},
-                        "values": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Values to write, one per cell in the range, in order",
-                        },
-                    },
-                    "required": ["spreadsheet_id", "range", "values"],
-                },
-            },
-        },
-        sheets_update_cell,
-    )

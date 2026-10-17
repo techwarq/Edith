@@ -7,20 +7,22 @@ for the same reasoning applied to WhatsApp automation.
 import pytest
 
 from edith.integrations import browse
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
 def test_fill_form_queues_pending_action(conn):
-    registry = ToolRegistry()
-    browse.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(browse)
 
     result = registry.dispatch(
         "fill_form",
@@ -28,7 +30,7 @@ def test_fill_form_queues_pending_action(conn):
     )
 
     assert "Queued as action #" in result
-    pending = store.get_pending_actions(conn)
+    pending = system.get_pending_actions(conn)
     assert len(pending) == 1
     assert pending[0]["tool_name"] == "submit_form"
     assert pending[0]["args"] == {
@@ -43,8 +45,8 @@ def test_fill_form_does_not_call_a_live_browser(conn, monkeypatch):
         raise AssertionError("fill_form should never open a live browser session — only submit_form (on /approve) does")
 
     monkeypatch.setattr(browse, "_session", fail_if_called)
-    registry = ToolRegistry()
-    browse.register(registry, conn)
+    registry = ToolRegistry(ToolContext(conn=conn))
+    registry.register_module(browse)
 
     registry.dispatch("fill_form", {"url": "https://example.com", "field_values": {"a": "b"}})  # must not raise
 

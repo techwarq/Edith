@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import requests
 
-from edith.memory import startup_leads_store as leads_store
+from edith.memory.records import career
 from edith.startup_finder.email_draft import short_name
 
 logger = logging.getLogger("edith.startup_finder.visa")
@@ -42,7 +42,7 @@ ALIASES = {
     "turkey": ("turkey", "türkiye", "turkiye", "istanbul"),
     "united states": ("united states", "usa", "san francisco", "new york"),
 }
-TLD_COUNTRY = {tld: country for country, tld in leads_store.COUNTRY_TLDS.items()}
+TLD_COUNTRY = {tld: country for country, tld in career.COUNTRY_TLDS.items()}
 
 _SPONSOR = re.compile(
     r"\b(visa sponsorship|sponsor(s|ing)? (your |a |work )?(visa|work permit)s?|relocation (support|package|assistance|bonus)|"
@@ -208,12 +208,12 @@ def classify(lead: dict[str, Any]) -> tuple[str, str]:
 
 def apply(conn: sqlite3.Connection, lead: dict[str, Any]) -> str:
     lead["visa"], lead["visa_why"] = classify(lead)
-    leads_store.set_visa(conn, lead["id"], lead["visa"], lead["visa_why"])
+    career.set_lead_visa(conn, lead["id"], lead["visa"], lead["visa_why"])
     return lead["visa"]
 
 
 def backfill(conn: sqlite3.Connection) -> int:
-    todo = leads_store.unclassified_visa(conn)
+    todo = career.leads_without_visa(conn)
     for lead in todo:
         apply(conn, lead)
     return len(todo)

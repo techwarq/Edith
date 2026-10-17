@@ -18,7 +18,8 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from edith.config import DB_PATH
-from edith.memory import db, job_applications_store
+from edith.memory.records import career
+from edith.memory.storage import sqlite
 
 
 def extract_pdf_text(path: Path) -> str:
@@ -39,13 +40,13 @@ def main() -> None:
 
     style_path = Path(sys.argv[2]).expanduser() if len(sys.argv) > 2 else None
 
-    conn = db.connect(DB_PATH)
+    conn = sqlite.connect(DB_PATH)
     try:
         resume_text = extract_pdf_text(resume_path)
         if not resume_text:
             print(f"ERROR: extracted no text from {resume_path} — is it a scanned/image PDF?")
             sys.exit(1)
-        job_applications_store.save_resume_text(conn, resume_text, str(resume_path))
+        career.save_resume_text(conn, resume_text, str(resume_path))
         print(f"Saved resume text ({len(resume_text)} chars) from {resume_path} into {DB_PATH}")
 
         if style_path is not None:
@@ -60,7 +61,7 @@ def main() -> None:
                         "paste real writing samples in and re-run this script."
                     )
                 else:
-                    job_applications_store.save_style_sample(conn, style_text, str(style_path))
+                    career.save_style_sample(conn, style_text, str(style_path))
                     print(f"Saved writing-style sample ({len(style_text)} chars) from {style_path}")
         else:
             print("No style sample file given — pipeline will use a fallback tone until one is ingested.")

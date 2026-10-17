@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from edith.memory import todos_store
+from edith.memory.records import planning
 
 
 def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
@@ -25,7 +25,7 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
     async def list_todos(token: str = "", status: Optional[str] = None) -> JSONResponse:
         if (err := _check_token(token)) is not None:
             return err
-        todos = await asyncio.to_thread(todos_store.list_todos, conn, status)
+        todos = await asyncio.to_thread(planning.list_todos, conn, status)
         return JSONResponse({"todos": todos})
 
     @router.post("/todos", response_model=None)
@@ -38,10 +38,10 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
             return JSONResponse({"error": "title is required"}, status_code=400)
 
         def _create() -> dict:
-            todo_id = todos_store.create_todo(
+            todo_id = planning.create_todo(
                 conn, title, body.get("note") or None, body.get("due_date") or None, body.get("goal_id") or None
             )
-            return todos_store.get_todo(conn, todo_id)
+            return planning.get_todo(conn, todo_id)
 
         return JSONResponse(await asyncio.to_thread(_create))
 
@@ -52,8 +52,8 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
             return err
 
         def _update() -> Optional[dict]:
-            todos_store.update_todo(conn, todo_id, status=body.get("status"), note=body.get("note") or None)
-            return todos_store.get_todo(conn, todo_id)
+            planning.update_todo(conn, todo_id, status=body.get("status"), note=body.get("note") or None)
+            return planning.get_todo(conn, todo_id)
 
         todo = await asyncio.to_thread(_update)
         if todo is None:
@@ -65,7 +65,7 @@ def build_router(conn: sqlite3.Connection, api_token: str) -> APIRouter:
         body = await request.json()
         if (err := _check_token(body.get("token", ""))) is not None:
             return err
-        ok = await asyncio.to_thread(todos_store.delete_todo, conn, todo_id)
+        ok = await asyncio.to_thread(planning.delete_todo, conn, todo_id)
         return JSONResponse({"ok": ok})
 
     return router

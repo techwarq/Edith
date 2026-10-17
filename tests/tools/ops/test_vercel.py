@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from edith.tools.ops import vercel
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
@@ -16,14 +17,14 @@ def _fake_response(json_data, status_code=200):
 
 def _registry(monkeypatch, response, settings=None):
     monkeypatch.setattr(vercel.requests, "get", lambda *a, **k: response)
-    r = ToolRegistry()
-    vercel.register(r, settings or _FakeSettings())
+    r = ToolRegistry(ToolContext(settings=settings or _FakeSettings()))
+    r.register_module(vercel)
     return r
 
 
 def test_not_configured_returns_clear_message():
-    r = ToolRegistry()
-    vercel.register(r, _FakeSettings(token=""))
+    r = ToolRegistry(ToolContext(settings=_FakeSettings(token="")))
+    r.register_module(vercel)
     assert r.dispatch("vercel_list_projects", {}) == vercel._NOT_CONFIGURED
     assert r.dispatch("vercel_list_deployments", {"project_id": "prj_1"}) == vercel._NOT_CONFIGURED
 

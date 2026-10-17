@@ -1,20 +1,22 @@
 import pytest
 
-from edith.memory import db, store
+from edith.memory.records import system
+from edith.memory.storage import sqlite
 from edith.tools.productivity import projects
+from edith.tools.base import ToolContext
 from edith.tools.registry import ToolRegistry
 
 
 @pytest.fixture
 def conn(tmp_path):
-    c = db.connect(tmp_path / "test.db")
+    c = sqlite.connect(tmp_path / "test.db")
     yield c
     c.close()
 
 
 def _registry(conn):
-    r = ToolRegistry()
-    projects.register(r, conn)
+    r = ToolRegistry(ToolContext(conn=conn))
+    r.register_module(projects)
     return r
 
 
@@ -31,7 +33,7 @@ def test_track_project_defaults_description_to_name(conn):
     r = _registry(conn)
     r.dispatch("track_project", {"name": "edith"})
 
-    assert store.get_fact(conn, "edith") == "edith"
+    assert system.get_setting(conn, "edith") == "edith"
 
 
 def test_track_project_again_updates_not_duplicates(conn):
@@ -39,7 +41,7 @@ def test_track_project_again_updates_not_duplicates(conn):
     r.dispatch("track_project", {"name": "edith", "description": "starting out"})
     r.dispatch("track_project", {"name": "edith", "description": "shipping voice mode"})
 
-    facts = store.get_facts_by_category(conn, projects.WORKING_ON_CATEGORY)
+    facts = system.list_settings(conn, projects.WORKING_ON_CATEGORY)
     assert len(facts) == 1
     assert facts[0]["value"] == "shipping voice mode"
 
