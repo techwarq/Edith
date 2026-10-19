@@ -135,6 +135,12 @@ def test_perceive_sees_existing_regions_so_it_can_reuse_them(brain, llm):
     assert "- business: 1" in perceive_prompts[-1]
 
 
+def test_perceive_asks_for_relative_dates_resolved_against_the_note_date(brain, llm):
+    brain.remember("Went to Paris last week", at="2026-05-10T09:00:00.000Z")
+    prompt = llm.prompts[0]
+    assert "Content (2026-05-10T09:00:00.000Z)" in prompt and "Resolve relative times" in prompt
+
+
 def test_fresh_brain_says_it_has_no_regions(brain, llm):
     brain.remember("first memory ever")
     assert "(none yet" in llm.prompts[0]

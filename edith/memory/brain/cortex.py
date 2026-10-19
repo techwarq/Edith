@@ -28,7 +28,10 @@ region exists.
 preferences, or instructions on how Eddy should behave — things worth having in mind in every \
 conversation. Plans, events, projects, and one-off details are not core.
 - context: ONE sentence stating what this memory says about the user, written as a standalone fact \
-("Prefers short, direct answers without bullet points.").
+("Prefers short, direct answers without bullet points."). Resolve relative times against the content's \
+date above, so the fact still reads right months later: "went to Paris last week" said on 2026-05-10 \
+becomes "Went to Paris the week of 2026-05-03."; "starting the new job tomorrow" becomes "Started a new \
+job on 2026-05-11.". Keep times as given when the content has no date to anchor them.
 - keywords: at least 3 salient keywords, most important first, no names of speakers or timestamps.
 - tags: at least 3 broad categories.
 

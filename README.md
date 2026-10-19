@@ -205,9 +205,9 @@ $0.004 per million tokens. No Gemini, no GPT-5.
 - The memory organized itself: 1,435 notes, 5,210 typed links ("part of", "updates", "contradicts"…),
   79% of notes rewritten as later conversation changed their meaning, 68 life areas created with
   nothing predefined, and ~20% of small talk skipped.
-- Weakest spot: temporal questions. Relative dates ("last week") aren't yet resolved to absolute
-  dates when a memory is filed. About a third of all misses were the small answer model not finishing
-  its answer format, not memory misses.
+- Weakest spot: temporal questions. Relative dates ("last week") weren't resolved to absolute
+  dates when a memory was filed. That's fixed now, but it hasn't been re-benchmarked yet. About a
+  third of all misses were the small answer model not finishing its answer format, not memory misses.
 
 <sub>Scope: all 10 LOCOMO conversations, ingested about halfway to keep the run under $1; scored on the
 820 of 1,540 questions whose evidence is in the ingested part, compared against mem0's published
